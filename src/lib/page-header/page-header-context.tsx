@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useState, type ReactNode } from 'react';
+import { createContext, useMemo, useState, type ReactNode } from 'react';
 
 export interface Crumb {
   label: string;
@@ -28,5 +28,8 @@ export const PageHeaderCtx = createContext<PageHeaderContextValue | null>(null);
  */
 export const PageHeaderProvider = ({ children }: { children: ReactNode }) => {
   const [state, set] = useState<PageHeaderState>(DEFAULT_PAGE_HEADER);
-  return <PageHeaderCtx.Provider value={{ state, set }}>{children}</PageHeaderCtx.Provider>;
+  // Stable context value: only changes when `state` does (`set` is stable), so
+  // consumers don't re-render on unrelated parent renders.
+  const value = useMemo<PageHeaderContextValue>(() => ({ state, set }), [state]);
+  return <PageHeaderCtx.Provider value={value}>{children}</PageHeaderCtx.Provider>;
 };
