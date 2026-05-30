@@ -11,10 +11,8 @@ export const AppShell = () => (
   <PageHeaderProvider>
     <div className="flex min-h-screen flex-col bg-app text-text">
       <TopBar />
-      {/* Structural margin to make some space below the nav header TopBar */}
-      <div className="mt-1">
-        <BreadcrumbStrip />
-      </div>
+      {/* Structural placement for breadcrumb strip */}
+      <BreadcrumbStrip />
       {/* Increased top and bottom padding for a beautiful, spacious layout */}
       <main className="flex-1 px-6 pt-6 pb-8">
         <Outlet />

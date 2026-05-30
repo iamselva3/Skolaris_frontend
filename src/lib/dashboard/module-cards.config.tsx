@@ -149,6 +149,42 @@ const SUPER_ADMIN_CARDS: DashboardModuleCard[] = [
     ],
   },
   {
+    id: 'classrooms',
+    icon: <FcReadingEbook size={56} aria-hidden />,
+    title: 'Classrooms',
+    subtitle: 'Manage classrooms',
+    href: '/classrooms',
+    metrics: () => [],
+  },
+  {
+    id: 'question-bank',
+    icon: <Library size={56} className="text-primary" strokeWidth={1.5} aria-hidden />,
+    title: 'Question Bank',
+    subtitle: 'Inventory + add new',
+    href: '/questions',
+    metrics: (d) => [
+      neutral('approved', v(d, (x) => x.questionBank.totalApproved, '—')),
+      (v(d, (x) => x.questionBank.draftsPending, 0) > 0 ? attention : positive)(
+        'drafts pending',
+        v(d, (x) => x.questionBank.draftsPending, 0),
+      ),
+    ],
+  },
+  {
+    id: 'uploads',
+    icon: <FcUpload size={56} aria-hidden />,
+    title: 'Uploads',
+    subtitle: 'OCR pipeline',
+    href: '/uploads',
+    metrics: (d) => [
+      neutral('today', v(d, (x) => x.uploads.uploadedToday, '—')),
+      (v(d, (x) => x.uploads.reviewQueueCount, 0) > 0 ? critical : positive)(
+        'review queue',
+        v(d, (x) => x.uploads.reviewQueueCount, 0),
+      ),
+    ],
+  },
+  {
     id: 'exams',
     icon: <FcSmartphoneTablet size={56} aria-hidden />,
     title: 'Exams',

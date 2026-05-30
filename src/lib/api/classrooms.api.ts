@@ -22,10 +22,13 @@ export interface CreateClassroomBody {
   year?: string;
   section?: string;
   subject?: string;
+  teacherId?: string;
 }
 
 export const classroomsApi = {
-  list: async (params: { branchId?: string; limit?: number; offset?: number } = {}): Promise<PaginatedResponse<Classroom>> => {
+  list: async (
+    params: { branchId?: string; teacherId?: string; limit?: number; offset?: number } = {},
+  ): Promise<PaginatedResponse<Classroom>> => {
     const r = await apiClient.get<PaginatedResponse<Classroom>>('/classrooms', { params });
     return r.data;
   },

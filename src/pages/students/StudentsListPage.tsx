@@ -383,10 +383,10 @@ const CreateStudentModal = ({ open, branchOptions, isSuperAdmin, userBranchId, o
           </FormField>
         )}
         <div className="grid grid-cols-2 gap-3 mt-3">
-          <FormField label="Class label" htmlFor="scl">
+          <FormField label="Class label" htmlFor="scl" className="!mt-0">
             <Input id="scl" {...register('classLabel')} />
           </FormField>
-          <FormField label="Roll no" htmlFor="srn">
+          <FormField label="Roll no" htmlFor="srn" className="!mt-0">
             <Input id="srn" {...register('rollNo')} />
           </FormField>
         </div>
@@ -475,10 +475,10 @@ const EditStudentModal = ({ student, branchOptions, isSuperAdmin, onClose, onSav
         </FormField>
       )}
       <div className="grid grid-cols-2 gap-3 mt-3">
-        <FormField label="Class label" htmlFor="escl">
+        <FormField label="Class label" htmlFor="escl" className="!mt-0">
           <Input id="escl" {...register('classLabel')} />
         </FormField>
-        <FormField label="Roll no" htmlFor="esrn">
+        <FormField label="Roll no" htmlFor="esrn" className="!mt-0">
           <Input id="esrn" {...register('rollNo')} />
         </FormField>
       </div>

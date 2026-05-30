@@ -9,6 +9,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { branchesApi } from '@/lib/api/branches.api';
 import { classroomsApi, type Classroom } from '@/lib/api/classrooms.api';
+import { teachersApi } from '@/lib/api/teachers.api';
 import { apiErrorMessage } from '@/lib/api/client';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -28,11 +29,13 @@ const schema = z.object({
   year: z.string().max(20).optional().or(z.literal('')),
   section: z.string().max(20).optional().or(z.literal('')),
   subject: z.string().max(80).optional().or(z.literal('')),
+  teacherId: z.string().uuid().optional().or(z.literal('')),
 });
 type Form = z.infer<typeof schema>;
 
 export const ClassroomsListPage = () => {
   const [branchId, setBranchId] = useState('');
+  const [teacherId, setTeacherId] = useState('');
   const [offset, setOffset] = useState(0);
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
@@ -40,9 +43,17 @@ export const ClassroomsListPage = () => {
   const lockedBranchId = user?.role === 'TEACHER' ? (user.branchId ?? undefined) : undefined;
 
   const branches = useQuery({ queryKey: ['branches'], queryFn: () => branchesApi.list({ limit: 200 }) });
+  
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const teachers = useQuery({
+    queryKey: ['teachers'],
+    queryFn: () => teachersApi.list({ limit: 500 }),
+    enabled: isSuperAdmin,
+  });
+
   const list = useQuery({
-    queryKey: ['classrooms', { branchId, offset }],
-    queryFn: () => classroomsApi.list({ branchId: branchId || undefined, limit: PAGE_SIZE, offset }),
+    queryKey: ['classrooms', { branchId, teacherId, offset }],
+    queryFn: () => classroomsApi.list({ branchId: branchId || undefined, teacherId: teacherId || undefined, limit: PAGE_SIZE, offset }),
     placeholderData: (p) => p,
   });
 
@@ -88,6 +99,24 @@ export const ClassroomsListPage = () => {
             </option>
           ))}
         </Select>
+        {isSuperAdmin && (
+          <Select
+            className="max-w-xs"
+            value={teacherId}
+            onChange={(e) => {
+              setTeacherId(e.target.value);
+              setOffset(0);
+            }}
+            disabled={teachers.isLoading}
+          >
+            <option value="">All teachers</option>
+            {teachers.data?.data.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.email})
+              </option>
+            ))}
+          </Select>
+        )}
       </div>
 
       <Table columns={columns} data={list.data?.data ?? []} empty={<>No classrooms yet.</>} />
@@ -99,6 +128,7 @@ export const ClassroomsListPage = () => {
         open={open}
         branches={branches.data?.data ?? []}
         lockedBranchId={lockedBranchId}
+        isSuperAdmin={isSuperAdmin}
         onClose={() => setOpen(false)}
         onCreated={() => {
           qc.invalidateQueries({ queryKey: ['classrooms'] });
@@ -113,19 +143,29 @@ const CreateClassroomModal = ({
   open,
   branches,
   lockedBranchId,
+  isSuperAdmin,
   onClose,
   onCreated,
 }: {
   open: boolean;
   branches: Array<{ id: string; name: string }>;
   lockedBranchId?: string;
+  isSuperAdmin?: boolean;
   onClose: () => void;
   onCreated: (c: Classroom) => void;
 }) => {
   const navigate = useNavigate();
-  const { register, handleSubmit, reset, formState } = useForm<Form>({ 
+  const { register, handleSubmit, reset, formState, watch } = useForm<Form>({ 
     resolver: zodResolver(schema),
     defaultValues: { branchId: lockedBranchId || '' },
+  });
+  const selectedBranchId = watch('branchId');
+  
+  // Only fetch teachers if superadmin and a branch is selected
+  const { data: teachersData, isLoading: isLoadingTeachers } = useQuery({
+    queryKey: ['teachers', selectedBranchId],
+    queryFn: () => teachersApi.list({ branchId: selectedBranchId, limit: 100 }),
+    enabled: !!isSuperAdmin && !!selectedBranchId && open,
   });
   const mutation = useMutation({
     mutationFn: classroomsApi.create,
@@ -157,6 +197,7 @@ const CreateClassroomModal = ({
                 year: v.year || undefined,
                 section: v.section || undefined,
                 subject: v.subject || undefined,
+                teacherId: v.teacherId || undefined,
               }),
             )}
           >
@@ -180,14 +221,26 @@ const CreateClassroomModal = ({
           </Select>
         </FormField>
       )}
+      {isSuperAdmin && (
+        <FormField label="Assign Teacher (Optional)" htmlFor="ct" error={formState.errors.teacherId?.message}>
+          <Select id="ct" {...register('teacherId')} disabled={!selectedBranchId || isLoadingTeachers}>
+            <option value="">{isLoadingTeachers ? 'Loading...' : !selectedBranchId ? 'Select a branch first' : 'Select teacher...'}</option>
+            {teachersData?.data.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.email})
+              </option>
+            ))}
+          </Select>
+        </FormField>
+      )}
       <div className="grid grid-cols-3 gap-4">
-        <FormField label="Year" htmlFor="cy">
+        <FormField label="Year" htmlFor="cy" className="!mt-0">
           <Input id="cy" {...register('year')} />
         </FormField>
-        <FormField label="Section" htmlFor="cs">
+        <FormField label="Section" htmlFor="cs" className="!mt-0">
           <Input id="cs" {...register('section')} />
         </FormField>
-        <FormField label="Subject" htmlFor="csubj">
+        <FormField label="Subject" htmlFor="csubj" className="!mt-0">
           <Input id="csubj" {...register('subject')} />
         </FormField>
       </div>

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   chaptersApi,
@@ -8,6 +8,14 @@ import {
   type TaxonomySelection,
 } from '@/lib/api/taxonomy.api';
 import { cn } from '@/lib/utils/cn';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { apiErrorMessage } from '@/lib/api/client';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { FormField } from '@/components/ui/FormField';
+import { useCurrentUser } from '@/lib/hooks/use-current-user';
 
 export type TaxonomyLevel = 'programId' | 'subjectId' | 'topicId' | 'chapterId';
 
@@ -45,6 +53,11 @@ export const CourseSelector = ({
   const showSubject = levels.includes('subjectId');
   const showTopic = levels.includes('topicId');
   const showChapter = levels.includes('chapterId');
+  
+  const qc = useQueryClient();
+  const [addModal, setAddModal] = useState<{ level: TaxonomyLevel; name: string; loading: boolean } | null>(null);
+  const { user } = useCurrentUser();
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const programs = useQuery({
     queryKey: ['taxonomy', 'programs'],
@@ -83,6 +96,13 @@ export const CourseSelector = ({
   }, [subjects.data, value.subjectId, showSubject]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handle = (level: TaxonomyLevel, id: string | null): void => {
+    if (id === '__add_new__') {
+      setAddModal({ level, name: '', loading: false });
+      // Revert selection
+      onChange({ ...value });
+      return;
+    }
+
     if (level === 'programId') {
       onChange({ programId: id, subjectId: null, topicId: null, chapterId: null });
     } else if (level === 'subjectId') {
@@ -91,6 +111,46 @@ export const CourseSelector = ({
       onChange({ ...value, topicId: id, chapterId: null });
     } else {
       onChange({ ...value, chapterId: id });
+    }
+  };
+
+  const handleCreateSubmit = async () => {
+    if (!addModal || !addModal.name.trim()) return;
+    setAddModal((prev) => prev ? { ...prev, loading: true } : null);
+    
+    try {
+      let newId = '';
+      const name = addModal.name.trim();
+      const level = addModal.level;
+      
+      if (level === 'programId') {
+        // Auto-generate code from name (e.g. "JEE Mains 2026" -> "JEE_MAINS_2026")
+        const code = name.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/_+/g, '_').substring(0, 40);
+        const res = await programsApi.create({ code, name });
+        newId = res.id;
+        qc.invalidateQueries({ queryKey: ['taxonomy', 'programs'] });
+        onChange({ programId: newId, subjectId: null, topicId: null, chapterId: null });
+      } else if (level === 'subjectId') {
+        const res = await subjectsApi.create({ programId: value.programId!, name });
+        newId = res.id;
+        qc.invalidateQueries({ queryKey: ['taxonomy', 'subjects', value.programId] });
+        onChange({ ...value, subjectId: newId, topicId: null, chapterId: null });
+      } else if (level === 'topicId') {
+        const res = await topicsApi.create({ subjectId: value.subjectId!, name });
+        newId = res.id;
+        qc.invalidateQueries({ queryKey: ['taxonomy', 'topics', value.subjectId] });
+        onChange({ ...value, topicId: newId, chapterId: null });
+      } else if (level === 'chapterId') {
+        const res = await chaptersApi.create({ topicId: value.topicId!, name });
+        newId = res.id;
+        qc.invalidateQueries({ queryKey: ['taxonomy', 'chapters', value.topicId] });
+        onChange({ ...value, chapterId: newId });
+      }
+      toast.success(`${level.replace('Id', '')} created successfully`);
+      setAddModal(null);
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+      setAddModal((prev) => prev ? { ...prev, loading: false } : null);
     }
   };
 
@@ -122,6 +182,7 @@ export const CourseSelector = ({
               {p.name}
             </option>
           ))}
+          {isSuperAdmin && <option value="__add_new__">+ Add Program...</option>}
         </select>
       ) : null}
 
@@ -138,6 +199,7 @@ export const CourseSelector = ({
               {s.name}
             </option>
           ))}
+          {value.programId && <option value="__add_new__">+ Add Subject...</option>}
         </select>
       ) : null}
 
@@ -154,6 +216,7 @@ export const CourseSelector = ({
               {t.name}
             </option>
           ))}
+          {value.subjectId && <option value="__add_new__">+ Add Topic...</option>}
         </select>
       ) : null}
 
@@ -170,8 +233,45 @@ export const CourseSelector = ({
               {c.name}
             </option>
           ))}
+          {value.topicId && <option value="__add_new__">+ Add Chapter...</option>}
         </select>
       ) : null}
+
+      {addModal && (
+        <Modal
+          open={true}
+          title={`Add ${addModal.level.replace('Id', '')}`}
+          onClose={() => setAddModal(null)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setAddModal(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                loading={addModal.loading}
+                disabled={!addModal.name.trim()}
+                onClick={handleCreateSubmit}
+              >
+                Create
+              </Button>
+            </>
+          }
+        >
+          <FormField label="Name" htmlFor="newItemName">
+            <Input
+              id="newItemName"
+              autoFocus
+              value={addModal.name}
+              onChange={(e) => setAddModal({ ...addModal, name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCreateSubmit();
+                }
+              }}
+            />
+          </FormField>
+        </Modal>
+      )}
     </div>
   );
 };
