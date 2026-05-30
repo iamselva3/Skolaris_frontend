@@ -206,8 +206,39 @@ export const LoginPage = () => {
                 className="relative w-20 h-20 rounded-full flex items-center justify-center border border-white/60 bg-white/70 backdrop-blur-md"
                 style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.05)' }}
               >
-                {/* Image replacing SVG shield */}
-                <img src={logoImg} alt="Icon" className="w-12 h-12 object-contain" />
+                {/* Sleek SVG Shield + Star Badge */}
+                <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none">
+                  {/* Shield Path with soft blue gradient fill */}
+                  <path 
+                    d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" 
+                    fill="url(#shieldGrad)" 
+                    stroke="#1A80F8" 
+                    strokeWidth="1.5" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  />
+                  
+                  {/* Gold 8-pointed star in center */}
+                  <path 
+                    d="M12 6.5l0.8 2.2L15 9.5l-2.2 0.8L12 12.5l-0.8-2.2L9 9.5l2.2-0.8z" 
+                    fill="#ECC06B" 
+                    stroke="#D69E2E" 
+                    strokeWidth="0.75" 
+                  />
+                  
+                  {/* Secondary smaller star points for 8-pointed star look */}
+                  <path 
+                    d="M12 9.5l0.5 0.5l0.5-0.5l-0.5-0.5z" 
+                    fill="#ECC06B" 
+                  />
+                  
+                  <defs>
+                    <radialGradient id="shieldGrad" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stopColor="#EFF6FF" />
+                      <stop offset="100%" stopColor="#DBEAFE" />
+                    </radialGradient>
+                  </defs>
+                </svg>
                 
                 {/* Floating micro sparks around the badge */}
                 <div className="absolute top-2 right-4 w-1.5 h-1.5 rounded-full bg-[#ECC06B] animate-custom-ping" style={{ animationDelay: '0.5s' }} />
