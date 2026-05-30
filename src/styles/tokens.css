@@ -1,0 +1,83 @@
+/* ============================================================================
+ * SKOLARIS — Design tokens.
+ *
+ * Single source of truth. Tailwind reads these via tailwind.config.ts.
+ * To rebrand: edit a value here and rebuild.
+ *
+ * Locked 2026-05-27 to match the ERP-identity prompt §5.
+ * ========================================================================= */
+
+:root {
+  /* Color palette — locked */
+  --bg-app:        #F9FAFB;
+  --bg-surface:    #FFFFFF;
+  --bg-subtle:     #F9FAFB;
+  --bg-hover:      #F3F4F6;
+
+  --border:        #E5E7EB;
+  --border-soft:   #F3F4F6;
+  --border-strong: #D1D5DB;
+  --border-focus:  #1F4E8C;
+
+  --text:          #111827;
+  --text-muted:    #6B7280;
+  --text-faint:    #9CA3AF;
+  --text-on-primary: #FFFFFF;
+
+  --primary:       #1F4E8C;
+  --primary-hover: #1A416F;
+  --primary-active:#163559;
+  --primary-soft:  #EFF4FA;
+
+  /* Branch picker chip (the yellow "Pethaniapuram" element) */
+  --branch-bg:     #FEF9C3;
+  --branch-border: #FDE68A;
+  --branch-text:   #854D0E;
+
+  /* Notification bell soft pill */
+  --bell-bg:       #FEF3C7;
+  --bell-text:     #92400E;
+  --bell-count:    #1F4E8C;
+
+  --success:       #16A34A;
+  --success-soft:  #ECFDF5;
+  --warning:       #B45309;
+  --warning-soft:  #FEF3C7;
+  --danger:        #B91C1C;
+  --danger-soft:   #FEE2E2;
+  --info:          #1F4E8C;
+  --info-soft:     #EFF4FA;
+  --online:        #22C55E;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+               Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Cascadia Mono',
+               'Roboto Mono', Consolas, 'Liberation Mono', monospace;
+
+  /* Radius — capped at 12px for cards/panels */
+  --radius-sm: 4px;
+  --radius:    8px;
+  --radius-md: 12px;
+
+  /* Spacing scale — strict 4/8/12/16/20/24/32 only */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ERP shell layout */
+  --topbar-height:      64px;
+  --breadcrumb-height:  64px;
+  --page-padding:       24px;
+
+  /* Inner-page densities (kept from prior — applies inside operational pages) */
+  --h-control: 32px;
+  --h-control-sm: 28px;
+  --h-row-table: 36px;
+  --h-row-table-compact: 28px;
+  --h-header-table: 32px;
+}

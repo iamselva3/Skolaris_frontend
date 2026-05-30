@@ -1,0 +1,8 @@
+@import './tokens.css';
+@import './base.css';
+@import './components.css';
+@import 'katex/dist/katex.min.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -1,0 +1,163 @@
+﻿/* ============================================================================
+ * Semantic component classes â€” the only file that composes raw Tailwind utilities.
+ *
+ * Feature pages NEVER write `bg-primary px-3 h-9 rounded â€¦` â€” they use a
+ * primitive (<Button variant="primary">) which uses these classes.
+ *
+ * Sizes locked to tokens.css (--h-control, --h-row-table, etc).
+ * ========================================================================= */
+
+@layer components {
+  /* â”€â”€â”€â”€â”€ Layout shell â”€â”€â”€â”€â”€ */
+  .app-shell        { @apply flex min-h-screen bg-app text-text; }
+  .app-sidebar      { @apply fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-width)] flex-col border-r border-border bg-surface lg:flex; }
+  .app-main         { @apply flex min-h-screen flex-1 flex-col lg:pl-[var(--sidebar-width)]; }
+  .app-topbar       { @apply sticky top-0 z-20 flex h-[var(--topbar-height)] items-center gap-4 border-b border-border bg-surface px-4; }
+  .app-content      { @apply flex-1 p-4; }
+
+  /* Page header â€” 40px, breadcrumb + title + actions in one row */
+  .page-header      { @apply mb-4 flex h-[var(--pageheader-height)] items-center justify-between gap-4; }
+  .page-title       { @apply text-md font-semibold leading-none; }      /* 16px */
+  .page-breadcrumb  { @apply text-xs text-text-muted; }                  /* 13px-ish via text-xs (12) muted */
+
+  /* â”€â”€â”€â”€â”€ Card â”€â”€â”€â”€â”€ */
+  .card             { @apply rounded border border-border bg-surface; }
+  .card-header      { @apply flex items-center justify-between border-b border-border px-3 py-2 text-sm font-semibold; }
+  .card-header-link { @apply text-xs font-normal text-primary hover:underline; }
+  .card-body        { @apply p-3; }
+
+  /* â”€â”€â”€â”€â”€ Stat card (compact, no icon column) â”€â”€â”€â”€â”€ */
+  .stat-card        { @apply card flex h-[var(--h-stat-card)] flex-col justify-between p-3 transition-colors hover:bg-hover; }
+  .stat-card-label  { @apply text-[11px] font-medium uppercase tracking-[0.4px] text-text-muted; }
+  .stat-card-value  { @apply text-lg font-semibold leading-none; }      /* 20px */
+  .stat-card-delta  { @apply text-[11px] text-text-muted; }
+  .stat-card-delta-up   { @apply text-success; }
+  .stat-card-delta-down { @apply text-danger; }
+
+  /* â”€â”€â”€â”€â”€ Sidebar nav â”€â”€â”€â”€â”€ */
+  .brand-block      { @apply flex h-10 flex-col justify-center border-b border-border px-3; }
+  .brand-name       { @apply text-sm font-semibold tracking-tight; }
+  .brand-tag        { @apply text-[10px] font-medium uppercase tracking-[0.6px] text-text-muted; }
+
+  .nav-group        { @apply mt-3; }
+  .nav-group-label  { @apply px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.6px] text-text-faint; }
+  .nav-item         { @apply flex h-8 items-center border-l-2 border-transparent pl-3 pr-3 text-[13px] text-text hover:bg-hover; }
+  .nav-item-active  { @apply border-primary bg-primary-soft font-medium text-primary; }
+
+  /* â”€â”€â”€â”€â”€ Buttons â”€â”€â”€â”€â”€ */
+  .btn              { @apply inline-flex h-[var(--h-control)] items-center justify-center gap-1.5 rounded border px-3 text-[13px] font-medium leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-sm           { @apply h-[var(--h-control-sm)] px-2 text-xs; }
+  .btn-icon         { @apply h-[var(--h-control)] w-[var(--h-control)] p-0; }
+  .btn-primary      { @apply border-primary bg-primary text-text-on-primary hover:bg-primary-hover active:bg-primary-active; }
+  .btn-secondary    { @apply border-border bg-surface text-text hover:bg-hover; }
+  .btn-destructive  { @apply border-danger bg-surface text-danger hover:bg-danger-soft; }
+  .btn-ghost        { @apply border-transparent bg-transparent text-text hover:bg-hover; }
+  .btn-link         { @apply inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline; }
+
+  /* â”€â”€â”€â”€â”€ Form â”€â”€â”€â”€â”€ */
+  .form-label       { @apply mb-1 block text-[12px] font-semibold uppercase tracking-[0.4px] text-text-muted; }
+  .form-help        { @apply mt-1 text-[11px] text-text-muted; }
+  .form-error       { @apply mt-1 text-[11px] text-danger; }
+  .form-input       { @apply block h-[var(--h-control)] w-full rounded border border-border bg-surface px-2.5 text-[13px] placeholder:text-text-faint focus:border-primary focus:outline-none disabled:bg-subtle disabled:text-text-muted; }
+  .form-input-error { @apply border-danger focus:border-danger; }
+  .form-textarea    { @apply form-input min-h-[80px] py-2 leading-normal; }
+  .form-select      { @apply form-input appearance-none bg-[length:14px] bg-no-repeat pr-7; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236B7280'><path d='M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z'/></svg>"); background-position: right 7px center; }
+  .form-checkbox    { @apply h-4 w-4 rounded border border-border focus:ring-0 focus:ring-offset-0; accent-color: var(--primary); }
+
+  .field            { @apply block; }
+  .field + .field   { @apply mt-3; }
+
+  /* ───── Toolbar (sits above tables). Auto-height so wrapping works ───── */
+  .toolbar          { @apply mb-2 flex min-h-10 flex-wrap items-center justify-between gap-2; }
+  .toolbar-left     { @apply flex min-w-0 flex-1 flex-wrap items-center gap-2; }
+  .toolbar-right    { @apply flex flex-wrap items-center gap-2; }
+
+  /* ───── Filter bar — for pages with rich filters (e.g. Question Bank).
+     Renders as a bordered surface above the table; multi-row by design. ───── */
+  .filter-bar       { @apply mb-3 rounded-md border border-border bg-surface p-3; }
+  .filter-row       { @apply flex flex-wrap items-center gap-2; }
+  .filter-row + .filter-row { @apply mt-2; }
+
+  /* â”€â”€â”€â”€â”€ Table â”€â”€â”€â”€â”€ */
+  .table-wrap       { @apply card overflow-hidden; }
+  .table-scroll     { @apply overflow-x-auto; }
+  .data-table       { @apply w-full text-[13px]; }
+  .data-table thead { @apply sticky top-0 z-10 border-b border-border bg-subtle; }
+  .data-table th    { @apply h-[var(--h-header-table)] px-3 text-left text-[11px] font-semibold uppercase tracking-[0.4px] text-text-muted; }
+  .data-table tbody tr { @apply border-b border-border-soft last:border-0; }
+  .data-table tbody tr:hover { @apply bg-hover; }
+  .data-table td    { @apply h-[var(--h-row-table)] px-3 align-middle; }
+  .data-table-compact td { @apply h-[var(--h-row-table-compact)] py-1; }
+  .data-table-actions { @apply flex items-center gap-2; }
+
+  .pagination       { @apply flex items-center justify-between border-t border-border bg-surface px-3 py-1.5 text-xs; }
+  .bulk-strip       { @apply mb-2 flex h-9 items-center justify-between rounded border border-border bg-primary-soft px-3 text-[13px] text-primary; }
+
+  /* â”€â”€â”€â”€â”€ Badge â”€â”€â”€â”€â”€ */
+  .badge            { @apply inline-flex h-[18px] items-center rounded border border-border bg-subtle px-1.5 text-[10px] font-medium leading-none text-text; }
+  .badge-info       { @apply border-primary bg-primary-soft text-primary; }
+  .badge-success    { @apply border-success bg-success-soft text-success; }
+  .badge-warning    { @apply border-warning bg-warning-soft text-warning; }
+  .badge-danger     { @apply border-danger bg-danger-soft text-danger; }
+
+  /* â”€â”€â”€â”€â”€ Tabs â”€â”€â”€â”€â”€ */
+  .tabs             { @apply mb-3 flex gap-4 border-b border-border; }
+  .tabs-tab         { @apply -mb-px cursor-pointer border-b-2 border-transparent px-1 py-2 text-[13px] text-text-muted hover:text-text; }
+  .tabs-tab-active  { @apply border-primary font-medium text-text; }
+
+  /* â”€â”€â”€â”€â”€ Stepper (used in Exam Compose) â”€â”€â”€â”€â”€ */
+  .stepper          { @apply mb-3 flex items-center gap-3; }
+  .stepper-step     { @apply flex items-center gap-2; }
+  .stepper-circle   { @apply flex h-6 w-6 items-center justify-center rounded-full border text-xs font-medium; }
+  .stepper-circle-future    { @apply border-border text-text-faint; }
+  .stepper-circle-active    { @apply border-primary bg-primary text-text-on-primary; }
+  .stepper-circle-done      { @apply border-text-muted bg-text-muted text-text-on-primary; }
+  .stepper-title    { @apply text-[13px]; }
+  .stepper-title-future { @apply text-text-faint; }
+  .stepper-title-active { @apply font-medium text-primary; }
+  .stepper-title-done   { @apply text-text-muted; }
+  .stepper-line     { @apply h-px w-8 bg-border; }
+
+  /* â”€â”€â”€â”€â”€ Modal & Drawer â”€â”€â”€â”€â”€ */
+  .modal-overlay    { @apply fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4; }
+  .modal            { @apply w-full max-w-lg rounded border border-border bg-surface; }
+  .modal-header     { @apply flex items-center justify-between border-b border-border px-3 py-2 text-sm font-semibold; }
+  .modal-body       { @apply max-h-[70vh] overflow-y-auto px-3 py-3; }
+  .modal-footer     { @apply flex items-center justify-end gap-2 border-t border-border px-3 py-2; }
+
+  .drawer-overlay   { @apply fixed inset-0 z-40 bg-black/40; }
+  .drawer           { @apply fixed right-0 top-0 z-50 flex h-screen w-[480px] max-w-full flex-col border-l border-border bg-surface; }
+  .drawer-header    { @apply flex h-10 items-center justify-between border-b border-border px-3 text-sm font-semibold; }
+  .drawer-body      { @apply flex-1 overflow-y-auto px-3 py-3; }
+  .drawer-footer    { @apply flex items-center justify-end gap-2 border-t border-border px-3 py-2; }
+
+  /* â”€â”€â”€â”€â”€ Sticky form footer (Exam Compose) â”€â”€â”€â”€â”€ */
+  .form-footer      { @apply sticky bottom-0 -mx-4 mt-4 flex h-12 items-center justify-between border-t border-border bg-surface px-4; }
+
+  /* â”€â”€â”€â”€â”€ Definition list â”€â”€â”€â”€â”€ */
+  .dl-grid          { @apply grid grid-cols-[200px_1fr]; }
+  .dl-row           { @apply col-span-2 grid grid-cols-subgrid items-center border-b border-border-soft py-1.5 last:border-0; }
+  .dl-label         { @apply text-[11px] font-semibold uppercase tracking-[0.4px] text-text-muted; }
+  .dl-value         { @apply text-[13px] text-text; }
+
+  /* â”€â”€â”€â”€â”€ Recent list (dashboard / panels) â”€â”€â”€â”€â”€ */
+  .recent-row       { @apply flex items-start justify-between gap-2 border-b border-border-soft py-2 last:border-0; }
+  .recent-primary   { @apply text-[13px] font-medium text-text; }
+  .recent-meta      { @apply mt-0.5 text-[11px] text-text-muted; }
+
+  /* â”€â”€â”€â”€â”€ States â”€â”€â”€â”€â”€ */
+  .empty-row        { @apply px-3 py-6 text-center text-[13px] text-text-muted; }
+  .loading-line     { @apply px-1 py-2 text-[13px] text-text-muted; }
+  .error-banner     { @apply mb-3 flex items-center justify-between gap-2 rounded border border-danger bg-danger-soft px-3 py-2 text-[13px] text-danger; }
+
+  /* â”€â”€â”€â”€â”€ Attempt UI (student) â”€â”€â”€â”€â”€ */
+  .attempt-shell    { @apply flex min-h-screen flex-col bg-app text-text; }
+  .attempt-topbar   { @apply sticky top-0 z-20 flex h-12 items-center justify-between border-b border-border bg-surface px-4; }
+  .attempt-body     { @apply grid flex-1 gap-4 p-4 lg:grid-cols-[200px_1fr]; }
+  .attempt-navigator{ @apply card grid grid-cols-nav gap-2 p-2; }
+  .nav-q            { @apply flex h-8 items-center justify-center rounded border border-border bg-surface text-xs hover:bg-hover; }
+  .nav-q-answered   { @apply border-primary bg-primary text-text-on-primary; }
+  .nav-q-flagged    { @apply ring-1 ring-warning; }
+  .nav-q-current    { @apply border-2 border-primary; }
+  .timer            { @apply rounded border border-border bg-subtle px-3 py-1 font-mono text-sm font-semibold tabular-nums; }
+}

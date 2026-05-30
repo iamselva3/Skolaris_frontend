@@ -1,0 +1,177 @@
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  chaptersApi,
+  programsApi,
+  subjectsApi,
+  topicsApi,
+  type TaxonomySelection,
+} from '@/lib/api/taxonomy.api';
+import { cn } from '@/lib/utils/cn';
+
+export type TaxonomyLevel = 'programId' | 'subjectId' | 'topicId' | 'chapterId';
+
+interface Props {
+  value: TaxonomySelection;
+  onChange: (next: TaxonomySelection) => void;
+  /** Which levels to render. Default ['programId','subjectId','topicId','chapterId']. */
+  levels?: TaxonomyLevel[];
+  size?: 'sm' | 'md';
+  /** 'horizontal' (default) = side-by-side grid; 'vertical' = stacked column. */
+  direction?: 'horizontal' | 'vertical';
+  className?: string;
+  disabled?: boolean;
+}
+
+/**
+ * Horizontal CourseSelector — four cascading selects (Program → Subject → Topic
+ * → Chapter). Used wherever the user is filtering or tagging by the coaching
+ * taxonomy. Each select disables until its parent is set; changing a parent
+ * clears the descendants in onChange.
+ *
+ * Data fetches are gated by `enabled: !!parentId` and cached for 10 min (taxonomy
+ * changes infrequently).
+ */
+export const CourseSelector = ({
+  value,
+  onChange,
+  levels = ['programId', 'subjectId', 'topicId', 'chapterId'],
+  size = 'md',
+  direction = 'horizontal',
+  className,
+  disabled,
+}: Props): JSX.Element => {
+  const showProgram = levels.includes('programId');
+  const showSubject = levels.includes('subjectId');
+  const showTopic = levels.includes('topicId');
+  const showChapter = levels.includes('chapterId');
+
+  const programs = useQuery({
+    queryKey: ['taxonomy', 'programs'],
+    queryFn: programsApi.list,
+    staleTime: 10 * 60 * 1000,
+    enabled: showProgram,
+  });
+
+  const subjects = useQuery({
+    queryKey: ['taxonomy', 'subjects', value.programId],
+    queryFn: () => subjectsApi.list({ programId: value.programId ?? undefined, isActive: '1' }),
+    staleTime: 10 * 60 * 1000,
+    enabled: showSubject && !!value.programId,
+  });
+
+  const topics = useQuery({
+    queryKey: ['taxonomy', 'topics', value.subjectId],
+    queryFn: () => topicsApi.list({ subjectId: value.subjectId ?? undefined }),
+    staleTime: 10 * 60 * 1000,
+    enabled: showTopic && !!value.subjectId,
+  });
+
+  const chapters = useQuery({
+    queryKey: ['taxonomy', 'chapters', value.topicId],
+    queryFn: () => chaptersApi.list({ topicId: value.topicId ?? undefined }),
+    staleTime: 10 * 60 * 1000,
+    enabled: showChapter && !!value.topicId,
+  });
+
+  // Clear descendants if the value contains an ID that no longer exists in the
+  // newly-loaded parent set (handles e.g. stale URL params).
+  useEffect(() => {
+    if (showSubject && value.subjectId && subjects.data && !subjects.data.some((s) => s.id === value.subjectId)) {
+      onChange({ ...value, subjectId: null, topicId: null, chapterId: null });
+    }
+  }, [subjects.data, value.subjectId, showSubject]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handle = (level: TaxonomyLevel, id: string | null): void => {
+    if (level === 'programId') {
+      onChange({ programId: id, subjectId: null, topicId: null, chapterId: null });
+    } else if (level === 'subjectId') {
+      onChange({ ...value, subjectId: id, topicId: null, chapterId: null });
+    } else if (level === 'topicId') {
+      onChange({ ...value, topicId: id, chapterId: null });
+    } else {
+      onChange({ ...value, chapterId: id });
+    }
+  };
+
+  const selectCls = cn('form-select w-full', size === 'sm' && 'h-7 text-xs');
+  // Static class names so Tailwind JIT picks them up.
+  const colsCls =
+    levels.length === 1
+      ? 'grid-cols-1'
+      : levels.length === 2
+        ? 'grid-cols-2'
+        : levels.length === 3
+          ? 'grid-cols-3'
+          : 'grid-cols-4';
+  const wrapCls =
+    direction === 'vertical' ? 'flex flex-col gap-2' : cn('grid gap-2', colsCls);
+
+  return (
+    <div className={cn(wrapCls, className)}>
+      {showProgram ? (
+        <select
+          className={selectCls}
+          value={value.programId ?? ''}
+          disabled={disabled || programs.isLoading}
+          onChange={(e) => handle('programId', e.target.value || null)}
+        >
+          <option value="">Program ▾</option>
+          {(programs.data ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
+      {showSubject ? (
+        <select
+          className={selectCls}
+          value={value.subjectId ?? ''}
+          disabled={disabled || !value.programId || subjects.isLoading}
+          onChange={(e) => handle('subjectId', e.target.value || null)}
+        >
+          <option value="">{value.programId ? 'Subject ▾' : '— select program —'}</option>
+          {(subjects.data ?? []).map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
+      {showTopic ? (
+        <select
+          className={selectCls}
+          value={value.topicId ?? ''}
+          disabled={disabled || !value.subjectId || topics.isLoading}
+          onChange={(e) => handle('topicId', e.target.value || null)}
+        >
+          <option value="">{value.subjectId ? 'Topic ▾' : '— select subject —'}</option>
+          {(topics.data ?? []).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
+      {showChapter ? (
+        <select
+          className={selectCls}
+          value={value.chapterId ?? ''}
+          disabled={disabled || !value.topicId || chapters.isLoading}
+          onChange={(e) => handle('chapterId', e.target.value || null)}
+        >
+          <option value="">{value.topicId ? 'Chapter ▾' : '— select topic —'}</option>
+          {(chapters.data ?? []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      ) : null}
+    </div>
+  );
+};

@@ -1,0 +1,41 @@
+/* ============================================================================
+ * Base resets + focus rings + scrollbar.
+ *
+ * Only ONE place handles browser default normalisation. Don't override these
+ * per-component — escalate any global change here.
+ * ========================================================================= */
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--text);
+    background: var(--bg-app);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    margin: 0;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  /* Visible focus ring on every focusable. Never outline:none without a replacement. */
+  *:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 1px;
+    border-radius: var(--radius);
+  }
+
+  /* Form elements inherit font + color. */
+  button { font-family: inherit; color: inherit; }
+  input, select, textarea { font-family: inherit; color: inherit; }
+
+  /* Tables use border-collapse so our 1px row dividers don't double up. */
+  table { border-collapse: collapse; width: 100%; }
+
+  /* Subtle scrollbars — ERP screens have many of them. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
