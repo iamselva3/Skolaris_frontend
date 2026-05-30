@@ -60,7 +60,7 @@ export async function exportPdf<T>(baseName: string, opts: PdfOptions<T>): Promi
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
   doc.setTextColor(INK);
-  doc.text('SKOLARIS', margin, y);
+  doc.text('The SK Learnings', margin, y);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
   doc.text(opts.title, margin, (y += 18));

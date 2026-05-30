@@ -1,6 +1,6 @@
-# SKOLARIS Frontend — Phase 3
+# The SK Learnings Frontend — Phase 3
 
-Plain ERP-style admin dashboard for the SKOLARIS backend. **No gradients, no shadows, no animation theatrics.** Single primary accent, 1px borders, 4px radius, monospace timer, table-first lists.
+Plain ERP-style admin dashboard for the The SK Learnings backend. **No gradients, no shadows, no animation theatrics.** Single primary accent, 1px borders, 4px radius, monospace timer, table-first lists.
 
 ## Centralized styling architecture
 
@@ -82,8 +82,8 @@ src/
 npm install
 
 # 2. ensure backend is running (separate repo)
-#    docker compose up -d  # in D:\Skolaris\Skolaris Backend
-#    npm run start:dev     # in D:\Skolaris\Skolaris Backend
+#    docker compose up -d  # in D:\Skolaris\The SK Learnings Backend
+#    npm run start:dev     # in D:\Skolaris\The SK Learnings Backend
 
 # 3. start the frontend dev server (proxies /api → http://localhost:3000)
 npm run dev   # http://localhost:5173

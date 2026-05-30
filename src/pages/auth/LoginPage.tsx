@@ -10,6 +10,7 @@ import { useAuthStore } from '@/lib/auth/auth-store';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { apiErrorMessage } from '@/lib/api/client';
 import { homePathFor } from '@/lib/utils/role';
+import logoImg from '@/assets/Sk Learnings.png';
 
 const schema = z.object({
   email: z.string().email('Invalid email'),
@@ -159,27 +160,11 @@ export const LoginPage = () => {
         <div className="hidden lg:flex flex-col items-center text-center px-4">
           {/* Logo Card */}
           <div 
-            className="w-[200px] h-[200px] bg-black flex flex-col items-center justify-between p-6 relative select-none"
-            style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
+            className="w-[240px] h-[240px] bg-transparent flex flex-col items-center justify-center relative select-none"
           >
-            {/* Elegant 8-pointed star SVG */}
-            <div className="flex-1 flex items-center justify-center">
-              <svg className="w-20 h-20 text-[#ECC06B]" viewBox="0 0 100 100" fill="currentColor">
-                <path d="M50 8 L54 36 L79 21 L64 43 L92 50 L64 57 L79 79 L54 64 L50 92 L46 64 L21 79 L36 57 L8 50 L36 43 L21 21 L46 36 Z" />
-              </svg>
-            </div>
-            
-            {/* Brand Text */}
-            <div className="w-full text-center">
-              <div 
-                className="text-white text-xl font-bold tracking-[0.25em]"
-                style={{ fontFamily: "'Cinzel', 'Playfair Display', 'Georgia', serif" }}
-              >
-                SKOLARIS
-              </div>
-              <div className="text-[7.5px] text-[#A5A5A5] font-semibold tracking-[0.14em] mt-1.5 uppercase leading-none">
-                The Guiding Star for Student Success
-              </div>
+            {/* Logo Image */}
+            <div className="flex-1 flex items-center justify-center w-full h-full">
+              <img src={logoImg} alt="The SK Learnings" className="w-full h-full object-contain" />
             </div>
           </div>
 
@@ -221,39 +206,8 @@ export const LoginPage = () => {
                 className="relative w-20 h-20 rounded-full flex items-center justify-center border border-white/60 bg-white/70 backdrop-blur-md"
                 style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.05)' }}
               >
-                {/* Sleek SVG Shield + Star Badge */}
-                <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none">
-                  {/* Shield Path with soft blue gradient fill */}
-                  <path 
-                    d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" 
-                    fill="url(#shieldGrad)" 
-                    stroke="#1A80F8" 
-                    strokeWidth="1.5" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round"
-                  />
-                  
-                  {/* Gold 8-pointed star in center */}
-                  <path 
-                    d="M12 6.5l0.8 2.2L15 9.5l-2.2 0.8L12 12.5l-0.8-2.2L9 9.5l2.2-0.8z" 
-                    fill="#ECC06B" 
-                    stroke="#D69E2E" 
-                    strokeWidth="0.75" 
-                  />
-                  
-                  {/* Secondary smaller star points for 8-pointed star look */}
-                  <path 
-                    d="M12 9.5l0.5 0.5l0.5-0.5l-0.5-0.5z" 
-                    fill="#ECC06B" 
-                  />
-                  
-                  <defs>
-                    <radialGradient id="shieldGrad" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#EFF6FF" />
-                      <stop offset="100%" stopColor="#DBEAFE" />
-                    </radialGradient>
-                  </defs>
-                </svg>
+                {/* Image replacing SVG shield */}
+                <img src={logoImg} alt="Icon" className="w-12 h-12 object-contain" />
                 
                 {/* Floating micro sparks around the badge */}
                 <div className="absolute top-2 right-4 w-1.5 h-1.5 rounded-full bg-[#ECC06B] animate-custom-ping" style={{ animationDelay: '0.5s' }} />

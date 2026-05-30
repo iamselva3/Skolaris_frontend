@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * E2E config for the SKOLARIS ERP platform.
+ * E2E config for the The SK Learnings ERP platform.
  *
  * Prerequisites (the suite drives the REAL stack, it does not mock):
  *   1. Backend API running at http://localhost:3000  (`npm run dev:full` in the

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "SKOLARIS admin dashboard — plain ERP-style UI consuming the Phase 1/2/3 backend.",
+  "description": "The SK Learnings admin dashboard — plain ERP-style UI consuming the Phase 1/2/3 backend.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
