@@ -47,31 +47,54 @@ const imageStemHtml = (url: string): string =>
  */
 export const VisualReviewCard = ({
   draft,
+  payloadRef,
   onApprove,
   onConvertToText,
   onAnswerChange,
   isApproving,
 }: {
   draft: OcrDraft;
-  onApprove: (payload: VisualApprovePayload) => void;
+  /** Kept current with the live answer payload so a parent that renders its OWN
+   *  Save Answer / Approve buttons below this card can read the pick on click.
+   *  When provided WITHOUT onApprove, no internal Approve button is rendered. */
+  payloadRef?: { current: VisualApprovePayload | null };
+  /** Legacy/self-contained mode: when provided, the card renders its own Approve
+   *  (and optional Convert) button. The UploadReviewPage path omits this and uses
+   *  payloadRef + external buttons instead. */
+  onApprove?: (payload: VisualApprovePayload) => void;
   onConvertToText?: () => void;
   /** Report the current answer pick up to the page so the overview updates live. */
   onAnswerChange?: (meta: AnswerMeta) => void;
   isApproving?: boolean;
 }) => {
-  // Pre-selection from an imported answer key: a numeric index → MCQ option,
-  // a boolean → True/False. The teacher can still change it (clears the badge).
+  // Pre-selection precedence: a previously SAVED answer (persisted as draft
+  // options with one isCorrect) → an imported answer key (numeric index → MCQ
+  // option, boolean → True/False) → nothing. Saved options let the pick survive
+  // navigation; the teacher can still change it (clears the badge).
   const suggested = draft.suggestedAnswer ?? null;
+  const savedCorrectIdx = (draft.options ?? []).findIndex((o) => o.isCorrect); // 0-based, -1 = none
   const [mode, setMode] = useState<VisualAnswerMode>(() =>
-    suggested?.correct !== undefined && suggested.correct !== null ? 'TRUE_FALSE' : 'MCQ',
+    savedCorrectIdx >= 0
+      ? 'MCQ'
+      : suggested?.correct !== undefined && suggested.correct !== null
+        ? 'TRUE_FALSE'
+        : 'MCQ',
   );
   // Default to at least 4 option slots — the analyzer sometimes detects only 2
   // when the image clearly shows 4. The teacher can still adjust with −/+.
   const [optionCount, setOptionCount] = useState(() =>
-    clamp(Math.max(draft.optionCount ?? 4, suggested?.correctIndex ?? 0, 4), MIN_OPTIONS, MAX_OPTIONS),
+    clamp(
+      Math.max(draft.options?.length ?? 0, draft.optionCount ?? 4, suggested?.correctIndex ?? 0, 4),
+      MIN_OPTIONS,
+      MAX_OPTIONS,
+    ),
   );
   const [correctOption, setCorrectOption] = useState(() =>
-    suggested?.correctIndex && suggested.correctIndex >= 1 ? suggested.correctIndex : 0,
+    savedCorrectIdx >= 0
+      ? savedCorrectIdx + 1
+      : suggested?.correctIndex && suggested.correctIndex >= 1
+        ? suggested.correctIndex
+        : 0,
   );
   const [correctBool, setCorrectBool] = useState<boolean | null>(() =>
     suggested?.correct !== undefined && suggested.correct !== null ? suggested.correct : null,
@@ -111,7 +134,7 @@ export const VisualReviewCard = ({
     }
   };
 
-  // Approve is allowed once the mode's answer is set (Descriptive needs none).
+  // Answer is set once the mode's pick is made (Descriptive needs none).
   const answerReady =
     mode === 'DESCRIPTIVE' ||
     (mode === 'MCQ' && correctOption > 0) ||
@@ -159,6 +182,21 @@ export const VisualReviewCard = ({
           : 'Desc';
     cbRef.current?.({ mapped, label, source: autoMapped ? 'answer-key' : 'manual' });
   }, [mode, correctOption, correctBool, autoMapped]);
+
+  // Keep the live answer payload available to the parent, which renders the Save
+  // Answer / Approve buttons below this card (assigning a ref during render is the
+  // same pattern as cbRef above and never triggers a re-render).
+  if (payloadRef) {
+    payloadRef.current = {
+      mode,
+      optionCount,
+      correctOption,
+      correctBool,
+      solutionHtml: solution,
+      contentHtmlOverride: overrideHtml,
+      questionSnapshotKeyOverride: overrideKey,
+    };
+  }
 
   return (
     <div className="space-y-3 rounded-md border border-border bg-surface p-3">
@@ -340,35 +378,40 @@ export const VisualReviewCard = ({
         />
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        {onConvertToText ? (
-          <Button variant="ghost" size="sm" onClick={onConvertToText} disabled={isApproving}>
-            <Pencil size={13} className="mr-1" /> Convert to editable
+      {/* Self-contained mode (e.g. OcrAssistPanel): render the Approve/Convert
+      buttons here. The UploadReviewPage path omits onApprove and renders its own
+      Save Answer / Approve buttons below the card (reading payloadRef). */}
+      {onApprove ? (
+        <div className="flex items-center justify-between gap-2">
+          {onConvertToText ? (
+            <Button variant="ghost" size="sm" onClick={onConvertToText} disabled={isApproving}>
+              <Pencil size={13} className="mr-1" /> Convert to editable
+            </Button>
+          ) : (
+            <span />
+          )}
+          <Button
+            variant="primary"
+            size="sm"
+            loading={isApproving}
+            disabled={!displayUrl || !answerReady}
+            onClick={() =>
+              onApprove({
+                mode,
+                optionCount,
+                correctOption,
+                correctBool,
+                solutionHtml: solution,
+                contentHtmlOverride: overrideHtml,
+                questionSnapshotKeyOverride: overrideKey,
+              })
+            }
+            title={!answerReady ? 'Set the correct answer first' : 'Approve as a visual question'}
+          >
+            <Check size={14} className="mr-1" /> Approve
           </Button>
-        ) : (
-          <span />
-        )}
-        <Button
-          variant="primary"
-          size="sm"
-          loading={isApproving}
-          disabled={!displayUrl || !answerReady}
-          onClick={() =>
-            onApprove({
-              mode,
-              optionCount,
-              correctOption,
-              correctBool,
-              solutionHtml: solution,
-              contentHtmlOverride: overrideHtml,
-              questionSnapshotKeyOverride: overrideKey,
-            })
-          }
-          title={!answerReady ? 'Set the correct answer first' : 'Approve as a visual question'}
-        >
-          <Check size={14} className="mr-1" /> Approve
-        </Button>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 };

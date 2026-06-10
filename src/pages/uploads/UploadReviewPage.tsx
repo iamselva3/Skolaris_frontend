@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -777,6 +777,12 @@ const DraftCard = ({
   // the text editor.
   const visualMode = Boolean(draft.questionSnapshotKey?.trim());
   const saveTimer = useRef<number | null>(null);
+  // Visual question: the answer payload lives inside VisualReviewCard. It keeps
+  // this ref current so the Save Answer / Approve buttons (rendered here, below
+  // the card) can read the live pick on click; visualReady mirrors whether an
+  // answer is set, to enable those buttons.
+  const visualPayloadRef = useRef<VisualApprovePayload | null>(null);
+  const [visualReady, setVisualReady] = useState(false);
 
   const isFinal = draft.status === 'APPROVED' || draft.status === 'DISCARDED';
 
@@ -896,6 +902,32 @@ const DraftCard = ({
     },
     onError: (err) => toast.error(apiErrorMessage(err)),
   });
+
+  // Save a visual question's answer WITHOUT approving. The positional MCQ pick is
+  // persisted as draft options (isCorrect at the chosen slot) so it re-seeds when
+  // you navigate away and back; the cache is patched in place. The question stays
+  // in review — only Approve moves it to the question bank. (True/False and
+  // Descriptive carry no draft options to persist, so the pick holds for the
+  // session only.)
+  const saveVisualAnswer = () => {
+    const p = visualPayloadRef.current;
+    if (!p) return;
+    if (p.mode === 'MCQ' && p.correctOption > 0) {
+      const opts = Array.from({ length: p.optionCount }, (_, i) => ({
+        label: String(i + 1),
+        isCorrect: i + 1 === p.correctOption,
+      }));
+      ocrApi
+        .updateDraft(draft.id, { options: opts })
+        .then((saved) => {
+          onLocalPatch(saved.id, saved);
+          toast.success('Answer saved');
+        })
+        .catch((err) => toast.error(apiErrorMessage(err)));
+    } else {
+      toast.success('Answer saved');
+    }
+  };
 
   // Debounced autosave on text/type/options changes (only while still editable).
   useEffect(() => {
@@ -1075,21 +1107,27 @@ const DraftCard = ({
           <div className="space-y-3">
             <VisualReviewCard
               draft={draft}
-              isApproving={approveVisual.isPending}
-              onApprove={(p) => {
-                // A visual draft's answer is positional and only meaningful at
-                // approval, so there's nothing to "save" without approving — guide
-                // the teacher to taxonomy instead. Backend enforces this too.
-                if (!taxonomyComplete) {
-                  toast.info(
-                    'Assign Program, Subject, Topic & Chapter (or use Bulk Taxonomy) before approving.',
-                  );
-                  return;
-                }
-                approveVisual.mutate(p);
+              payloadRef={visualPayloadRef}
+              onAnswerChange={(meta) => {
+                setVisualReady(Boolean(meta.mapped));
+                onAnswerChange(meta);
               }}
-              onAnswerChange={onAnswerChange}
             />
+
+            {/* Save the selected answer WITHOUT approving — keeps the question in
+            review and in the pending count; only Approve (below) moves it on. */}
+            <div className="flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!visualReady}
+                onClick={saveVisualAnswer}
+                title="Save the selected answer and keep this question in review"
+              >
+                Save Answer
+              </Button>
+            </div>
+
             <div className="space-y-2">
               <CourseSelector value={taxonomy} onChange={setTaxonomy} size="sm" />
               <Select
@@ -1102,9 +1140,37 @@ const DraftCard = ({
                 <option value="HARD">HARD</option>
               </Select>
             </div>
-            <div className="flex justify-end">
+
+            {/* Final review actions — Approve is the TERMINAL step and requires both
+            a saved answer and complete taxonomy (Program/Subject/Topic/Chapter);
+            when taxonomy is missing it is blocked with a validation message. */}
+            <div className="flex items-center justify-between gap-2 border-t border-border-soft pt-3">
               <Button variant="destructive" size="sm" onClick={() => discard.mutate()}>
                 Discard
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!visualReady}
+                loading={approveVisual.isPending}
+                onClick={() => {
+                  if (!taxonomyComplete) {
+                    toast.error(
+                      'Assign Program, Subject, Topic & Chapter — on this question or via Bulk Taxonomy — before approving.',
+                    );
+                    return;
+                  }
+                  const p = visualPayloadRef.current;
+                  if (!p) return;
+                  approveVisual.mutate(p);
+                }}
+                title={
+                  taxonomyComplete
+                    ? 'Approve this question'
+                    : 'Requires a saved answer and complete taxonomy (Program, Subject, Topic, Chapter)'
+                }
+              >
+                Approve →
               </Button>
             </div>
           </div>
@@ -1175,6 +1241,24 @@ const DraftCard = ({
               </ul>
             ) : null}
 
+            {/* Save the selected answer WITHOUT approving. Answer persistence and
+            approval are separate actions: this keeps the question in review and in
+            the pending count — only Approve (below) moves it to the question bank. */}
+            <div className="mt-3 flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!hasCorrect || update.isPending}
+                loading={update.isPending}
+                onClick={() =>
+                  update.mutate(undefined, { onSuccess: () => toast.success('Answer saved') })
+                }
+                title="Save the selected answer and keep this question in review"
+              >
+                Save Answer
+              </Button>
+            </div>
+
             <div className="mt-3 space-y-2">
               <CourseSelector value={taxonomy} onChange={setTaxonomy} size="sm" />
               <div className="grid grid-cols-2 gap-2">
@@ -1201,45 +1285,47 @@ const DraftCard = ({
               </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-end gap-2">
+            {/* Final review actions. Approve is the TERMINAL step and requires both a
+            saved answer and complete taxonomy (Program/Subject/Topic/Chapter); when
+            taxonomy is missing it is blocked with a validation message. */}
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-border-soft pt-3">
               <Button variant="destructive" size="sm" onClick={() => discard.mutate()}>
                 Discard
               </Button>
-              {/* Open the full editor with this draft prefilled. Saving from there
-              uses ocrApi.approve (atomic) — same outcome as the inline button,
-              just with TipTap + the per-type editor for complex edits. */}
-              <Link
-                to={`/questions/new?draftId=${draft.id}&jobId=${jobId}`}
-                className="btn-link"
-                title="Open the full editor with this draft prefilled"
-              >
-                Edit &amp; approve →
-              </Link>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!hasCorrect}
-                loading={approve.isPending || (update.isPending && !taxonomyComplete)}
-                onClick={() => {
-                  if (!taxonomyComplete) {
-                    // Save the answer (also debounce-autosaved) and keep the draft
-                    // in review — no question is created until taxonomy is set.
-                    update.mutate();
-                    toast.info(
-                      'Answer saved. Assign Program, Subject, Topic & Chapter — on this question or via Bulk Taxonomy — then approve.',
-                    );
-                    return;
+              <div className="flex items-center gap-2">
+                {/* Open the full editor with this draft prefilled. Saving from there
+                uses ocrApi.approve (atomic) — same outcome as the inline button,
+                just with TipTap + the per-type editor for complex edits. */}
+                <Link
+                  to={`/questions/new?draftId=${draft.id}&jobId=${jobId}`}
+                  className="btn-link"
+                  title="Open the full editor with this draft prefilled"
+                >
+                  Edit &amp; approve →
+                </Link>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!hasCorrect}
+                  loading={approve.isPending}
+                  onClick={() => {
+                    if (!taxonomyComplete) {
+                      toast.error(
+                        'Assign Program, Subject, Topic & Chapter — on this question or via Bulk Taxonomy — before approving.',
+                      );
+                      return;
+                    }
+                    approve.mutate();
+                  }}
+                  title={
+                    taxonomyComplete
+                      ? 'Approve this question'
+                      : 'Requires a saved answer and complete taxonomy (Program, Subject, Topic, Chapter)'
                   }
-                  approve.mutate();
-                }}
-                title={
-                  taxonomyComplete
-                    ? 'Approve this question'
-                    : 'Assign Program, Subject, Topic & Chapter (or use Bulk Taxonomy) to approve'
-                }
-              >
-                {taxonomyComplete ? 'Quick approve →' : 'Save answer'}
-              </Button>
+                >
+                  Approve →
+                </Button>
+              </div>
             </div>
           </>
         )}
