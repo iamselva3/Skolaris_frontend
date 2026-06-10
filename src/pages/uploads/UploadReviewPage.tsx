@@ -1,8 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, KeyRound } from 'lucide-react';
+import { ArrowLeft, Check, KeyRound, Grid3x3, Menu } from 'lucide-react';
 import { uploadsApi } from '@/lib/api/uploads.api';
 import {
   ocrApi,
@@ -75,6 +75,15 @@ const isTaxonomyComplete = (d: OcrDraft): boolean => {
   return Boolean(t?.programId && t?.subjectId && t?.topicId && t?.chapterId);
 };
 
+/** The currently-selected option number (1-based) for the Manual Entry grid:
+ *  the saved correct option, else an OCR/answer-key preselect, else 0 (none). */
+const selectedOptionFor = (d: OcrDraft): number => {
+  const fromSaved = (d.options ?? []).findIndex((o) => o.isCorrect);
+  if (fromSaved >= 0) return fromSaved + 1;
+  const idx = d.suggestedAnswer?.correctIndex;
+  return idx && idx >= 1 ? idx : 0;
+};
+
 const ALL_TYPES: QuestionType[] = [
   'SINGLE_CHOICE',
   'MULTIPLE_CHOICE',
@@ -100,6 +109,11 @@ export const UploadReviewPage = () => {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [answerKeyOpen, setAnswerKeyOpen] = useState(false);
+  // Manual Entry Mode — a purely presentational alternative to the Question
+  // Navigator: a compact grid for rapidly clicking one option per question. It
+  // writes through the SAME persistence path as the review card (no OCR/approval/
+  // taxonomy/navigator changes). Default off = the existing navigator.
+  const [manualMode, setManualMode] = useState(false);
   // Lifted UI state so the overview, selection, and jump all stay in sync.
   const [localAnswers, setLocalAnswers] = useState<Record<string, AnswerMeta>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -238,6 +252,29 @@ export const UploadReviewPage = () => {
       }
     },
     [batchMode, batchId, jobId, qc],
+  );
+
+  // Manual Entry Mode: set a draft's correct option from the grid. Uses the SAME
+  // persistence as the review card (updateDraft + optimistic cache patch) so the
+  // two views stay in sync; existing option LABELS are preserved (only isCorrect
+  // moves). Approval/taxonomy/counts are untouched — this only saves the answer.
+  const saveManualAnswer = useCallback(
+    (d: OcrDraft, n: number) => {
+      if (d.status === 'APPROVED' || d.status === 'DISCARDED') return;
+      const base = d.options ?? [];
+      const count = Math.max(n, base.length, Math.min(6, Math.max(2, d.optionCount ?? 4)));
+      const opts = Array.from({ length: count }, (_, i) => ({
+        label: base[i]?.label ?? String(i + 1),
+        isCorrect: i + 1 === n,
+      }));
+      patchDraftCache(d.id, { options: opts }); // optimistic — view updates instantly
+      ocrApi
+        .updateDraft(d.id, { options: opts })
+        .then((saved) => patchDraftCache(saved.id, saved))
+        .catch((err) => toast.error(apiErrorMessage(err)));
+      handleAnswerChange(d.id, { mapped: true, label: indexToLabel(n), source: 'manual' });
+    },
+    [patchDraftCache, handleAnswerChange],
   );
 
   // Bulk taxonomy across a batch: taxonomy is denormalized per draft, so group the
@@ -558,22 +595,29 @@ export const UploadReviewPage = () => {
             </div>
           ) : null}
           {draftList.length > 0 ? (
-            <QuestionNavigator
-              drafts={draftList}
-              activeId={activeId}
-              onSelect={(id) => {
-                setActiveId(id);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              onAddMissing={jobId || batchMode ? openAddQuestion : undefined}
-              onReorder={
-                // Reorder maps to a question number within ONE job; that's ambiguous
-                // across files, so it's single-file only (drag disabled in batch).
-                !batchMode && jobId
-                  ? (draftId, toNumber) => reorder.mutate({ draftId, toNumber })
-                  : undefined
-              }
-            />
+            <div className="space-y-2">
+              {manualMode ? (
+                <ManualEntryGrid drafts={draftList} onPick={saveManualAnswer} onViewChange={() => setManualMode(false)} />
+              ) : (
+                <QuestionNavigator
+                  drafts={draftList}
+                  activeId={activeId}
+                  onSelect={(id) => {
+                    setActiveId(id);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  onAddMissing={jobId || batchMode ? openAddQuestion : undefined}
+                  onViewChange={() => setManualMode(true)}
+                  onReorder={
+                    // Reorder maps to a question number within ONE job; that's ambiguous
+                    // across files, so it's single-file only (drag disabled in batch).
+                    !batchMode && jobId
+                      ? (draftId, toNumber) => reorder.mutate({ draftId, toNumber })
+                      : undefined
+                  }
+                />
+              )}
+            </div>
           ) : null}
           {(jobId || batchMode) && taxonomyPendingIds.length > 0 ? (
             <BulkTaxonomyPanel
@@ -710,6 +754,95 @@ const FilePreview = ({
       >
         Open {originalName} in new tab ↗
       </a>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────── Manual Entry grid */
+
+/**
+ * Manual Entry Mode — a compact, presentation-only alternative to the Question
+ * Navigator. One row per question with clickable option buttons; clicking saves
+ * that answer immediately (via the parent's onPick → the shared persistence path)
+ * without opening the question. Reads selection straight from the draft cache, so
+ * it stays in sync with the review card. Approved/discarded rows are read-only.
+ */
+const ManualEntryGrid = ({
+  drafts,
+  onPick,
+  onViewChange,
+}: {
+  drafts: OcrDraft[];
+  onPick: (d: OcrDraft, n: number) => void;
+  onViewChange?: () => void;
+}) => {
+  const rows = drafts.filter((d) => d.status !== 'DISCARDED');
+  return (
+    <div className="rounded border border-border bg-surface">
+      <div className="flex w-full items-center justify-between px-3 py-2 border-b border-border-soft">
+        <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-text">
+          <Grid3x3 size={14} className="text-primary" /> Question navigator
+        </span>
+        {onViewChange && (
+          <div className="flex items-center rounded border border-border-soft bg-subtle p-0.5 ml-1">
+            <button
+              type="button"
+              title="Grid view"
+              onClick={(e) => { e.stopPropagation(); onViewChange(); }}
+              className="rounded p-1 text-text-muted hover:text-text"
+            >
+              <Grid3x3 size={13} />
+            </button>
+            <button
+              type="button"
+              title="Manual Entry"
+              className="rounded p-1 bg-surface shadow-sm text-primary"
+            >
+              <Menu size={13} />
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="p-2">
+        <div className="mb-2 px-1 text-[12px] font-semibold text-text">
+          Manual entry · click an option per question
+        </div>
+        <div className="flex max-h-[calc(100vh-12rem)] flex-col gap-0.5 overflow-y-auto">
+        {rows.map((d) => {
+          const count = Math.min(6, Math.max(2, d.options?.length || d.optionCount || 4));
+          const selected = selectedOptionFor(d);
+          const approved = d.status === 'APPROVED';
+          return (
+            <div key={d.id} className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-hover">
+              <span className="w-9 shrink-0 text-[12px] font-medium tabular-nums text-text-muted">
+                Q{draftQuestionNumber(d) ?? '—'}
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {Array.from({ length: count }, (_, i) => i + 1).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    disabled={approved}
+                    onClick={() => onPick(d, n)}
+                    className={cn(
+                      'inline-flex h-7 w-7 items-center justify-center rounded border text-[12px] font-medium transition-colors',
+                      selected === n
+                        ? 'border-success bg-success-soft text-success'
+                        : 'border-border bg-surface text-text-muted hover:bg-hover',
+                      approved && 'cursor-not-allowed opacity-50',
+                    )}
+                    title={approved ? 'Approved — revert to change' : `Set answer to option ${n}`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              {approved ? <Check size={13} className="shrink-0 text-success" /> : null}
+            </div>
+          );
+        })}
+      </div>
+      </div>
     </div>
   );
 };
@@ -903,30 +1036,24 @@ const DraftCard = ({
     onError: (err) => toast.error(apiErrorMessage(err)),
   });
 
-  // Save a visual question's answer WITHOUT approving. The positional MCQ pick is
-  // persisted as draft options (isCorrect at the chosen slot) so it re-seeds when
-  // you navigate away and back; the cache is patched in place. The question stays
-  // in review — only Approve moves it to the question bank. (True/False and
-  // Descriptive carry no draft options to persist, so the pick holds for the
-  // session only.)
-  const saveVisualAnswer = () => {
-    const p = visualPayloadRef.current;
-    if (!p) return;
-    if (p.mode === 'MCQ' && p.correctOption > 0) {
-      const opts = Array.from({ length: p.optionCount }, (_, i) => ({
-        label: String(i + 1),
-        isCorrect: i + 1 === p.correctOption,
-      }));
-      ocrApi
-        .updateDraft(draft.id, { options: opts })
-        .then((saved) => {
-          onLocalPatch(saved.id, saved);
-          toast.success('Answer saved');
-        })
-        .catch((err) => toast.error(apiErrorMessage(err)));
-    } else {
-      toast.success('Answer saved');
-    }
+  // Auto-persist a visual question's answer the INSTANT the pick changes — no
+  // Save button. The positional MCQ pick is stored as draft options (isCorrect at
+  // the chosen slot): the cache is patched optimistically so navigating away and
+  // back re-seeds the selection immediately, then it's written through to the
+  // server. The question stays in review; only Approve moves it on. (True/False
+  // and Descriptive carry no draft options to persist, so they hold for the
+  // session only.) Silent — it fires on every selection.
+  const persistVisualAnswer = (p: VisualApprovePayload) => {
+    if (p.mode !== 'MCQ' || p.correctOption <= 0) return;
+    const opts = Array.from({ length: p.optionCount }, (_, i) => ({
+      label: String(i + 1),
+      isCorrect: i + 1 === p.correctOption,
+    }));
+    onLocalPatch(draft.id, { options: opts }); // optimistic — survives navigation now
+    ocrApi
+      .updateDraft(draft.id, { options: opts })
+      .then((saved) => onLocalPatch(saved.id, saved))
+      .catch((err) => toast.error(apiErrorMessage(err)));
   };
 
   // Debounced autosave on text/type/options changes (only while still editable).
@@ -1108,25 +1235,12 @@ const DraftCard = ({
             <VisualReviewCard
               draft={draft}
               payloadRef={visualPayloadRef}
+              onAnswerPersist={persistVisualAnswer}
               onAnswerChange={(meta) => {
                 setVisualReady(Boolean(meta.mapped));
                 onAnswerChange(meta);
               }}
             />
-
-            {/* Save the selected answer WITHOUT approving — keeps the question in
-            review and in the pending count; only Approve (below) moves it on. */}
-            <div className="flex justify-end">
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!visualReady}
-                onClick={saveVisualAnswer}
-                title="Save the selected answer and keep this question in review"
-              >
-                Save Answer
-              </Button>
-            </div>
 
             <div className="space-y-2">
               <CourseSelector value={taxonomy} onChange={setTaxonomy} size="sm" />
@@ -1241,24 +1355,9 @@ const DraftCard = ({
               </ul>
             ) : null}
 
-            {/* Save the selected answer WITHOUT approving. Answer persistence and
-            approval are separate actions: this keeps the question in review and in
-            the pending count — only Approve (below) moves it to the question bank. */}
-            <div className="mt-3 flex justify-end">
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!hasCorrect || update.isPending}
-                loading={update.isPending}
-                onClick={() =>
-                  update.mutate(undefined, { onSuccess: () => toast.success('Answer saved') })
-                }
-                title="Save the selected answer and keep this question in review"
-              >
-                Save Answer
-              </Button>
-            </div>
-
+            {/* No Save button — selecting an option auto-persists immediately
+            (persistOptions patches the cache; the debounced autosave writes it
+            through to the server). The question stays in review until Approve. */}
             <div className="mt-3 space-y-2">
               <CourseSelector value={taxonomy} onChange={setTaxonomy} size="sm" />
               <div className="grid grid-cols-2 gap-2">

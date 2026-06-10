@@ -51,6 +51,7 @@ export const VisualReviewCard = ({
   onApprove,
   onConvertToText,
   onAnswerChange,
+  onAnswerPersist,
   isApproving,
 }: {
   draft: OcrDraft;
@@ -58,6 +59,9 @@ export const VisualReviewCard = ({
    *  Save Answer / Approve buttons below this card can read the pick on click.
    *  When provided WITHOUT onApprove, no internal Approve button is rendered. */
   payloadRef?: { current: VisualApprovePayload | null };
+  /** Auto-persist the answer the moment the teacher changes the pick (no Save
+   *  button). Fires only on user changes, never on the initial seed. */
+  onAnswerPersist?: (payload: VisualApprovePayload) => void;
   /** Legacy/self-contained mode: when provided, the card renders its own Approve
    *  (and optional Convert) button. The UploadReviewPage path omits this and uses
    *  payloadRef + external buttons instead. */
@@ -182,6 +186,26 @@ export const VisualReviewCard = ({
           : 'Desc';
     cbRef.current?.({ mapped, label, source: autoMapped ? 'answer-key' : 'manual' });
   }, [mode, correctOption, correctBool, autoMapped]);
+
+  // Auto-persist the answer the moment the teacher changes the pick (no Save
+  // button). Held in a ref so an inline parent prop doesn't retrigger the effect
+  // each render; gated on `touched` so the initial seed — including an OCR /
+  // answer-key preselect — is never re-written, only genuine user changes.
+  const persistRef = useRef(onAnswerPersist);
+  persistRef.current = onAnswerPersist;
+  useEffect(() => {
+    if (!touched) return;
+    persistRef.current?.({
+      mode,
+      optionCount,
+      correctOption,
+      correctBool,
+      solutionHtml: solution,
+      contentHtmlOverride: overrideHtml,
+      questionSnapshotKeyOverride: overrideKey,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touched, mode, optionCount, correctOption, correctBool]);
 
   // Keep the live answer payload available to the parent, which renders the Save
   // Answer / Approve buttons below this card (assigning a ref during render is the

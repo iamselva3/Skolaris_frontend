@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Grid3x3, HelpCircle, Plus, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Grid3x3, HelpCircle, Plus, X, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import type { OcrDraft } from '@/lib/api/ocr.api';
 import { draftQuestionNumber } from '@/lib/ocr/question-number';
@@ -55,6 +55,7 @@ export const QuestionNavigator = ({
   onSelect,
   onAddMissing,
   onReorder,
+  onViewChange,
 }: {
   drafts: OcrDraft[];
   activeId: string | null;
@@ -64,6 +65,8 @@ export const QuestionNavigator = ({
   onAddMissing?: (questionNumber: number) => void;
   /** Drag-reorder: move a draft to a target question number. */
   onReorder?: (draftId: string, toQuestionNumber: number) => void;
+  /** Switch to Manual Entry mode */
+  onViewChange?: () => void;
 }) => {
   const [open, setOpen] = useState(true);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -110,7 +113,26 @@ export const QuestionNavigator = ({
               <Plus size={12} /> Add
             </button>
           ) : null}
-          <button type="button" onClick={() => setOpen((v) => !v)} className="rounded p-0.5 text-text-muted hover:bg-hover">
+          {onViewChange && (
+            <div className="flex items-center rounded border border-border-soft bg-subtle p-0.5 ml-1">
+              <button
+                type="button"
+                title="Grid view"
+                className="rounded p-1 bg-surface shadow-sm text-primary"
+              >
+                <Grid3x3 size={13} />
+              </button>
+              <button
+                type="button"
+                title="Manual Entry"
+                onClick={(e) => { e.stopPropagation(); onViewChange(); }}
+                className="rounded p-1 text-text-muted hover:text-text"
+              >
+                <Menu size={13} />
+              </button>
+            </div>
+          )}
+          <button type="button" onClick={() => setOpen((v) => !v)} className="rounded p-0.5 ml-1 text-text-muted hover:bg-hover">
             {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
         </div>
