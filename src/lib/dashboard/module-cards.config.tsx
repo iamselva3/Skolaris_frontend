@@ -70,7 +70,7 @@ const TEACHER_CARDS: DashboardModuleCard[] = [
   {
     id: 'question-bank',
     icon: <Library size={56} className="text-primary" strokeWidth={1.5} aria-hidden />,
-    title: 'Question Bank',
+    title: 'Question Library',
     subtitle: 'Inventory + add new',
     href: '/questions',
     metrics: (d) => [
@@ -84,7 +84,7 @@ const TEACHER_CARDS: DashboardModuleCard[] = [
   {
     id: 'uploads',
     icon: <FcUpload size={56} aria-hidden />,
-    title: 'Uploads',
+    title: 'Bulk Upload Questions',
     subtitle: 'OCR pipeline',
     href: '/uploads',
     metrics: (d) => [
@@ -159,7 +159,7 @@ const SUPER_ADMIN_CARDS: DashboardModuleCard[] = [
   {
     id: 'question-bank',
     icon: <Library size={56} className="text-primary" strokeWidth={1.5} aria-hidden />,
-    title: 'Question Bank',
+    title: 'Question Library',
     subtitle: 'Inventory + add new',
     href: '/questions',
     metrics: (d) => [
@@ -173,7 +173,7 @@ const SUPER_ADMIN_CARDS: DashboardModuleCard[] = [
   {
     id: 'uploads',
     icon: <FcUpload size={56} aria-hidden />,
-    title: 'Uploads',
+    title: 'Bulk Upload Questions',
     subtitle: 'OCR pipeline',
     href: '/uploads',
     metrics: (d) => [
@@ -184,20 +184,7 @@ const SUPER_ADMIN_CARDS: DashboardModuleCard[] = [
       ),
     ],
   },
-  {
-    id: 'exams',
-    icon: <FcSmartphoneTablet size={56} aria-hidden />,
-    title: 'Exams',
-    subtitle: 'View and manage exams',
-    href: '/exams',
-    metrics: (d) => [
-      (v(d, (x) => x.exams.liveNow, 0) > 0 ? attention : neutral)(
-        'live now',
-        v(d, (x) => x.exams.liveNow, 0),
-      ),
-      neutral('this week', v(d, (x) => x.exams.scheduledThisWeek, '—')),
-    ],
-  },
+
   {
     id: 'create-exam',
     icon: <FcTodoList size={56} aria-hidden />,

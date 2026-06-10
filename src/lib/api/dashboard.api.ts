@@ -33,8 +33,15 @@ export interface DashboardSummary {
 }
 
 export const dashboardApi = {
-  summary: async (): Promise<DashboardSummary> => {
-    const r = await apiClient.get<ApiEnvelope<DashboardSummary>>('/dashboard/summary');
+  /**
+   * KPI summary. Pass the active branch to scope every card to that branch;
+   * omit (or null) for tenant-wide "All branches". Teachers are pinned to their
+   * own branch server-side regardless of what is sent.
+   */
+  summary: async (branchId?: string | null): Promise<DashboardSummary> => {
+    const r = await apiClient.get<ApiEnvelope<DashboardSummary>>('/dashboard/summary', {
+      params: branchId ? { branchId } : undefined,
+    });
     return r.data.data;
   },
 };

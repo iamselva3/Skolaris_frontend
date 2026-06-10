@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '@/lib/api/dashboard.api';
 import { cn } from '@/lib/utils/cn';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { useActiveBranch } from '@/lib/hooks/use-active-branch';
 import { MegaMenu, type MegaMenuColumn } from './MegaMenu';
 
 interface PrimaryTab {
@@ -35,10 +36,11 @@ export const PrimaryNav = () => {
 
   const { user } = useCurrentUser();
   const isStudent = user?.role === 'STUDENT';
+  const activeBranchId = useActiveBranch();
 
   const summary = useQuery({
-    queryKey: ['dashboard', 'summary'],
-    queryFn: dashboardApi.summary,
+    queryKey: ['dashboard', 'summary', activeBranchId],
+    queryFn: () => dashboardApi.summary(activeBranchId),
     staleTime: 30_000,
     refetchOnWindowFocus: true,
     enabled: !isStudent && !!user,
@@ -89,9 +91,10 @@ export const PrimaryNav = () => {
           ],
         },
         {
-          header: 'ASSESSMENTS',
+          header: 'TEST MANAGEMENT',
           links: [
-            { label: 'Compose exam', to: '/exams/new' },
+            { label: 'Manage question papers', to: '/question-papers' },
+            { label: 'Manage tests', to: '/tests' },
             { label: 'Exams', to: '/exams', count: c.liveExams },
             { label: 'Attempts', to: '/attempts' },
             { label: 'Analytics', to: '/analytics' },
@@ -140,9 +143,16 @@ export const PrimaryNav = () => {
         location.pathname.startsWith(p),
       );
     }
-    return ['/uploads', '/questions', '/exams', '/attempts', '/analytics', '/reports'].some((p) =>
-      location.pathname.startsWith(p),
-    );
+    return [
+      '/uploads',
+      '/questions',
+      '/exams',
+      '/question-papers',
+      '/tests',
+      '/attempts',
+      '/analytics',
+      '/reports',
+    ].some((p) => location.pathname.startsWith(p));
   };
 
   const openTab = TABS.find((t) => t.key === openKey);

@@ -5,8 +5,10 @@ import { toast } from 'sonner';
 import { ArrowLeft, ArrowRight, Trash2, Calendar, Clock } from 'lucide-react';
 import { examsApi, type ExamQuestion } from '@/lib/api/exams.api';
 import { questionsApi, type Question } from '@/lib/api/questions.api';
+import { questionPapersApi } from '@/lib/api/question-papers.api';
 import { classroomsApi } from '@/lib/api/classrooms.api';
 import { studentsApi } from '@/lib/api/students.api';
+import { useActiveBranch } from '@/lib/hooks/use-active-branch';
 import { apiErrorMessage } from '@/lib/api/client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -19,10 +21,12 @@ import { DefinitionList } from '@/components/ui/DefinitionList';
 import { Drawer } from '@/components/ui/Drawer';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { Stepper } from '@/components/ui/Stepper';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Textarea } from '@/components/ui/Textarea';
 import { formatDateTime } from '@/lib/utils/format';
+import { useDebounce } from '@/lib/hooks/use-debounce';
 
 const STEPS = [
   { key: '1', title: 'Create test' },
@@ -121,6 +125,7 @@ const StepCreate = ({
   const [opensAt, setOpensAt] = useState('');
   const [closesAt, setClosesAt] = useState('');
   const [showPicker, setShowPicker] = useState(false);
+  const [showPaperImport, setShowPaperImport] = useState(false);
 
   useEffect(() => {
     if (!exam.data) return;
@@ -222,7 +227,17 @@ const StepCreate = ({
             </div>
 
             <div className="flex justify-end pt-2 border-t border-border-soft">
-              <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>
+              <Button
+                variant="primary"
+                loading={save.isPending}
+                onClick={() => {
+                  if (!title.trim()) {
+                    toast.error('Enter an exam title before continuing');
+                    return;
+                  }
+                  save.mutate();
+                }}
+              >
                 Save & Continue
               </Button>
             </div>
@@ -234,9 +249,20 @@ const StepCreate = ({
         <Card>
           <CardHeader>
             <span>Questions ({exam.data?.questions.length ?? 0})</span>
-            <Button variant="primary" size="sm" disabled={disabled} onClick={() => setShowPicker(true)}>
-              + Add questions
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={disabled}
+                onClick={() => setShowPaperImport(true)}
+                title="Add all questions from an existing question paper"
+              >
+                From question paper
+              </Button>
+              <Button variant="primary" size="sm" disabled={disabled} onClick={() => setShowPicker(true)}>
+                + Add questions
+              </Button>
+            </div>
           </CardHeader>
           <CardBody>
             {exam.data?.questions.length === 0 ? (
@@ -264,7 +290,120 @@ const StepCreate = ({
           onSaved();
         }}
       />
+
+      {showPaperImport ? (
+        <ImportPaperDrawer
+          examId={examId}
+          existingIds={(exam.data?.questions ?? []).map((q) => q.questionId)}
+          nextPosition={exam.data?.questions.length ?? 0}
+          onClose={() => setShowPaperImport(false)}
+        />
+      ) : null}
     </>
+  );
+};
+
+/* ── Exam Source Option B: pull an existing Question Paper's questions into THIS
+   exam (a snapshot copy — the paper is unaffected). Lives on the Exam side, next
+   to "Add questions". ── */
+const ImportPaperDrawer = ({
+  examId,
+  existingIds,
+  nextPosition,
+  onClose,
+}: {
+  examId: string;
+  existingIds: string[];
+  nextPosition: number;
+  onClose: () => void;
+}) => {
+  const qc = useQueryClient();
+  const [q, setQ] = useState('');
+  const debounced = useDebounce(q, 300);
+  const papers = useQuery({
+    queryKey: ['question-papers', 'exam-import', debounced],
+    queryFn: () => questionPapersApi.list({ q: debounced || undefined, limit: 50 }),
+  });
+
+  const importMut = useMutation({
+    mutationFn: async (paperId: string) => {
+      const detail = await questionPapersApi.get(paperId);
+      const items = detail.questions
+        .filter((pq) => !existingIds.includes(pq.questionId))
+        .map((pq, i) => ({
+          questionId: pq.questionId,
+          position: nextPosition + i,
+          marks: pq.marks,
+          negativeMarks: pq.negativeMarks,
+        }));
+      if (items.length === 0) {
+        throw new Error("That paper's questions are already in this exam (or it has none).");
+      }
+      await examsApi.addQuestions(examId, items);
+      return items.length;
+    },
+    onSuccess: (n) => {
+      toast.success(`Added ${n} question${n === 1 ? '' : 's'} from the paper`);
+      qc.invalidateQueries({ queryKey: ['exam', examId] });
+      onClose();
+    },
+    onError: (e) => toast.error(apiErrorMessage(e)),
+  });
+
+  const rows = papers.data?.data ?? [];
+
+  return (
+    <Drawer
+      open
+      title="Add questions from a question paper"
+      onClose={onClose}
+      width={520}
+      footer={
+        <Button variant="secondary" onClick={onClose} disabled={importMut.isPending}>
+          Close
+        </Button>
+      }
+    >
+      <p className="mb-3 text-xs text-text-muted">
+        The selected paper's questions are copied into this exam. The paper itself is unchanged.
+      </p>
+      <Input
+        placeholder="Search question papers"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        className="mb-4"
+      />
+      <ul className="divide-y divide-border-soft">
+        {rows.length === 0 ? (
+          <li className="py-6 text-center text-sm text-text-muted">
+            {papers.isLoading ? 'Loading…' : 'No question papers found.'}
+          </li>
+        ) : (
+          rows.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium text-text">{p.title}</span>
+                  <StatusBadge value={p.status} />
+                </div>
+                <div className="text-xs text-text-muted">
+                  {p.questionCount} question{p.questionCount === 1 ? '' : 's'} · {p.totalMarks} marks
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={importMut.isPending}
+                disabled={p.questionCount === 0}
+                onClick={() => importMut.mutate(p.id)}
+              >
+                Add
+              </Button>
+            </li>
+          ))
+        )}
+      </ul>
+    </Drawer>
   );
 };
 
@@ -496,20 +635,36 @@ const StepAssign = ({
   const [studentIds, setStudentIds] = useState<string[]>([]);
   const [classQ, setClassQ] = useState('');
   const [studentQ, setStudentQ] = useState('');
+  // Assignment is scoped to the active branch (a teacher's own branch). Within
+  // that branch ANY teacher may assign the test to ANY student/classroom — the
+  // lists are not narrowed to the teacher's own classrooms, and the backend
+  // imposes no per-student restriction.
+  const branchId = useActiveBranch();
+  // Search students server-side (the list endpoint caps limit at 200, so a
+  // client-side filter over a single page can't find everyone). The backend
+  // matches `q` against name / email / roll no.
+  const debouncedStudentQ = useDebounce(studentQ, 300);
 
-  const classrooms = useQuery({ queryKey: ['classrooms', 'all'], queryFn: () => classroomsApi.list({ limit: 200 }) });
-  const students = useQuery({ queryKey: ['students', 'all'], queryFn: () => studentsApi.list({ limit: 500 }) });
+  const classrooms = useQuery({
+    queryKey: ['classrooms', 'assign', branchId],
+    queryFn: () => classroomsApi.list({ branchId: branchId || undefined, limit: 200 }),
+  });
+  const students = useQuery({
+    queryKey: ['students', 'assign', branchId, debouncedStudentQ],
+    queryFn: () =>
+      studentsApi.list({
+        branchId: branchId || undefined,
+        q: debouncedStudentQ || undefined,
+        limit: 200,
+      }),
+    placeholderData: (prev) => prev,
+  });
 
   const visibleClasses =
     classrooms.data?.data.filter((c) =>
       classQ.length === 0 ? true : c.name.toLowerCase().includes(classQ.toLowerCase()),
     ) ?? [];
-  const visibleStudents =
-    students.data?.data.filter((s) =>
-      studentQ.length === 0
-        ? true
-        : `${s.name} ${s.email}`.toLowerCase().includes(studentQ.toLowerCase()),
-    ) ?? [];
+  const visibleStudents = students.data?.data ?? [];
 
   const classCount = classroomIds.length;
   const classStudentCount = (classrooms.data?.data ?? [])

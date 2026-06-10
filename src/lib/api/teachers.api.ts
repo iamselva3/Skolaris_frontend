@@ -6,6 +6,7 @@ export interface User {
   tenantId: string;
   branchId: string | null;
   email: string;
+  phone?: string;
   name: string;
   role: Role;
   status: 'ACTIVE' | 'DISABLED';
@@ -16,6 +17,7 @@ export interface User {
 
 export interface CreateUserBody {
   email: string;
+  phone?: string;
   name: string;
   password: string;
   role: Role;
@@ -24,6 +26,7 @@ export interface CreateUserBody {
 
 export interface UpdateUserBody {
   name?: string;
+  phone?: string | null;
   branchId?: string | null;
   status?: 'ACTIVE' | 'DISABLED';
 }

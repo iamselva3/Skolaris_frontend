@@ -14,11 +14,23 @@ export interface Student {
   status: 'ACTIVE' | 'DISABLED';
   createdAt: string;
   updatedAt: string;
+  batch?: string | null;
+  section?: string | null;
+  subject?: string | null;
 }
 
 export interface ListStudentsQuery {
   branchId?: string;
-  classroomId?: string;
+  /**
+   * Classroom batch (= classroom.name). The backend resolves this through
+   * classroom membership (student → membership → classroom.name), NOT any
+   * field stored on the student. See list-students query.
+   */
+  batch?: string;
+  /** Classroom section (= classroom.section), also resolved via membership. */
+  section?: string;
+  subject?: string;
+  unallocated?: boolean;
   q?: string;
   limit?: number;
   offset?: number;

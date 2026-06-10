@@ -25,6 +25,7 @@ import { formatDateTime } from '@/lib/utils/format';
 const createSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(120),
+  phone: z.string().regex(/^\d{10}$/, 'Must be exactly 10 digits').optional().or(z.literal('')),
   password: z.string().min(8).max(128),
   branchId: z.string().uuid().optional().or(z.literal('')),
 });
@@ -32,6 +33,7 @@ type CreateForm = z.infer<typeof createSchema>;
 
 const editSchema = z.object({
   name: z.string().min(1).max(120),
+  phone: z.string().regex(/^\d{10}$/, 'Must be exactly 10 digits').optional().or(z.literal('')),
   branchId: z.string().uuid().optional().or(z.literal('')),
   status: z.enum(['ACTIVE', 'DISABLED']),
 });
@@ -89,6 +91,10 @@ export const TeachersListPage = () => {
   const columns: ColumnDef<User>[] = [
     { header: 'Name', accessorKey: 'name' },
     { header: 'Email', accessorKey: 'email' },
+    {
+      header: 'Phone',
+      cell: (c) => c.row.original.phone || <span className="text-text-faint">—</span>,
+    },
     {
       header: 'Branch',
       cell: (c) => {
@@ -277,6 +283,7 @@ const CreateTeacherModal = ({
             onClick={handleSubmit((v) =>
               mutation.mutate({
                 email: v.email,
+                phone: v.phone || undefined,
                 name: v.name,
                 password: v.password,
                 role: 'TEACHER',
@@ -294,6 +301,9 @@ const CreateTeacherModal = ({
       </FormField>
       <FormField label="Full name" htmlFor="tn" error={formState.errors.name?.message}>
         <Input id="tn" {...register('name')} />
+      </FormField>
+      <FormField label="Mobile Number" htmlFor="tph" error={formState.errors.phone?.message}>
+        <Input id="tph" type="tel" maxLength={10} {...register('phone')} />
       </FormField>
       <FormField label="Initial password" htmlFor="tp" error={formState.errors.password?.message}>
         <Input id="tp" type="text" {...register('password')} />
@@ -327,6 +337,7 @@ const EditTeacherModal = ({
     resolver: zodResolver(editSchema),
     defaultValues: {
       name: teacher.name,
+      phone: teacher.phone || '',
       branchId: teacher.branchId ?? '',
       status: teacher.status,
     },
@@ -336,6 +347,7 @@ const EditTeacherModal = ({
     mutationFn: (v: EditForm) =>
       teachersApi.update(teacher.id, {
         name: v.name,
+        phone: v.phone || null,
         branchId: v.branchId || null,
         status: v.status,
       }),
@@ -366,6 +378,9 @@ const EditTeacherModal = ({
     >
       <FormField label="Full name" htmlFor="etn" error={formState.errors.name?.message}>
         <Input id="etn" {...register('name')} />
+      </FormField>
+      <FormField label="Mobile Number" htmlFor="etph" error={formState.errors.phone?.message}>
+        <Input id="etph" type="tel" maxLength={10} {...register('phone')} />
       </FormField>
       <FormField label="Branch" htmlFor="etb">
         <Select id="etb" {...register('branchId')}>

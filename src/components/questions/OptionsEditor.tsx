@@ -22,6 +22,10 @@ export interface QuestionPayload {
   maxWords?: number;
   /** MATCH_FOLLOWING pairs (left, right). */
   pairs?: Array<{ left: string; right: string }>;
+  /** VISUAL: number of positional answer slots shown (2..6). */
+  optionCount?: number;
+  /** VISUAL: 1-based index of the correct option. */
+  correctOption?: number;
   /** Free-form explanation shown after submit. */
   explanation?: string;
 }
@@ -54,6 +58,8 @@ export const OptionsEditor = ({ type, payload, onChange, disabled }: Props) => {
       return <DescriptiveEditor payload={payload} onChange={onChange} disabled={disabled} />;
     case 'MATCH_FOLLOWING':
       return <MatchEditor payload={payload} onChange={onChange} disabled={disabled} />;
+    case 'VISUAL':
+      return <VisualEditor payload={payload} onChange={onChange} disabled={disabled} />;
     case 'MATRIX_MATCH':
     default:
       return (
@@ -363,3 +369,100 @@ const MatchEditor = ({
     </div>
   );
 };
+
+/* ─────────────────────────────────────────── VISUAL */
+
+const MIN_VISUAL_OPTIONS = 2;
+const MAX_VISUAL_OPTIONS = 6;
+
+/**
+ * Answer picker for a Visual Question. The image already shows the options, so
+ * there is no option text — the teacher only chooses how many answer slots the
+ * image has (2..6) and which one is correct.
+ */
+const VisualEditor = ({
+  payload,
+  onChange,
+  disabled,
+}: {
+  payload: QuestionPayload;
+  onChange: (next: QuestionPayload) => void;
+  disabled?: boolean;
+}) => {
+  const optionCount = clamp(payload.optionCount ?? 4, MIN_VISUAL_OPTIONS, MAX_VISUAL_OPTIONS);
+  const correctOption =
+    payload.correctOption && payload.correctOption <= optionCount ? payload.correctOption : 0;
+
+  const setCount = (next: number): void => {
+    const count = clamp(next, MIN_VISUAL_OPTIONS, MAX_VISUAL_OPTIONS);
+    onChange({
+      ...payload,
+      optionCount: count,
+      // Drop a correct pick that no longer exists after shrinking.
+      correctOption: correctOption > count ? 0 : correctOption,
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-text-muted">Number of options</span>
+        <div className="flex items-center rounded border border-border">
+          <button
+            type="button"
+            disabled={disabled || optionCount <= MIN_VISUAL_OPTIONS}
+            onClick={() => setCount(optionCount - 1)}
+            className="px-2 py-0.5 text-sm text-text-muted hover:bg-hover disabled:opacity-30"
+            aria-label="Fewer options"
+          >
+            −
+          </button>
+          <span className="w-8 text-center text-sm font-medium tabular-nums">{optionCount}</span>
+          <button
+            type="button"
+            disabled={disabled || optionCount >= MAX_VISUAL_OPTIONS}
+            onClick={() => setCount(optionCount + 1)}
+            className="px-2 py-0.5 text-sm text-text-muted hover:bg-hover disabled:opacity-30"
+            aria-label="More options"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-xs text-text-muted">
+          Correct answer (as numbered in the image)
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: optionCount }, (_, i) => i + 1).map((n) => (
+            <label
+              key={n}
+              className={
+                'inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded border text-sm font-medium transition-colors ' +
+                (correctOption === n
+                  ? 'border-success bg-success-soft text-success'
+                  : 'border-border bg-surface text-text-muted hover:bg-hover')
+              }
+            >
+              <input
+                type="radio"
+                name="visual-correct"
+                className="sr-only"
+                checked={correctOption === n}
+                disabled={disabled}
+                onChange={() => onChange({ ...payload, optionCount, correctOption: n })}
+              />
+              {n}
+            </label>
+          ))}
+        </div>
+        {correctOption === 0 ? (
+          <p className="mt-1.5 text-[11px] text-warning">Select which option is correct.</p>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
+const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));

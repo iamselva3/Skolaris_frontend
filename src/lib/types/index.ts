@@ -18,7 +18,10 @@ export type QuestionType =
   | 'TRUE_FALSE'
   | 'MATCH_FOLLOWING'
   | 'MATRIX_MATCH'
-  | 'DESCRIPTIVE';
+  | 'DESCRIPTIVE'
+  // The whole question is a single image; teacher marks one positional option
+  // (1..N, N=2..6) correct. Optional solution. Graded like SINGLE_CHOICE.
+  | 'VISUAL';
 
 export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
 

@@ -38,6 +38,9 @@ export const ExamsListPage = () => {
     placeholderData: (p) => p,
   });
 
+  // No name modal here — clicking "New exam" creates a draft and drops the
+  // teacher straight into the composer, where Step 1 collects the title +
+  // duration (one fewer dialog to dismiss). Title is required there to save.
   const createDraft = useMutation({
     mutationFn: () => examsApi.create({ title: 'Untitled exam', durationSeconds: 30 * 60 }),
     onSuccess: (exam) => {
@@ -60,8 +63,8 @@ export const ExamsListPage = () => {
     { header: 'Status', cell: (c) => <StatusBadge value={c.row.original.status} /> },
     { header: 'Duration (min)', cell: (c) => Math.round(c.row.original.durationSeconds / 60) },
     { header: 'Total marks', accessorKey: 'totalMarks' },
-    { header: 'Opens at', cell: (c) => formatDateTime(c.row.original.opensAt) },
-    { header: 'Closes at', cell: (c) => formatDateTime(c.row.original.closesAt) },
+    { header: 'Opens at', cell: (c) => c.row.original.opensAt ? formatDateTime(c.row.original.opensAt) : '—' },
+    { header: 'Closes at', cell: (c) => c.row.original.closesAt ? formatDateTime(c.row.original.closesAt) : '—' },
   ];
 
   return (
@@ -74,6 +77,7 @@ export const ExamsListPage = () => {
           </Button>
         }
       />
+
       <div className="toolbar">
         <Input
           placeholder="Search title or description"
@@ -101,11 +105,11 @@ export const ExamsListPage = () => {
       </div>
       <Table columns={columns} data={list.data?.data ?? []} empty={<>No exams. Create one to get started.</>} />
       {list.data ? (
-        <Pagination 
-          total={list.data.meta.total} 
-          limit={pageSize} 
-          offset={offset} 
-          onPageChange={setOffset} 
+        <Pagination
+          total={list.data.meta.total}
+          limit={pageSize}
+          offset={offset}
+          onPageChange={setOffset}
           onLimitChange={(l) => {
             setPageSize(l);
             setOffset(0);

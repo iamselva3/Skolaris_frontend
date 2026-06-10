@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { LogOut, User } from 'lucide-react';
+import { LogOut, User, Moon, Sun } from 'lucide-react';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useAuthStore } from '@/lib/auth/auth-store';
+import { useThemeStore } from '@/lib/theme/theme-store';
 import { authApi } from '@/lib/api/auth.api';
 import { tokenStorage } from '@/lib/auth/token-storage';
 
@@ -14,6 +15,8 @@ import { tokenStorage } from '@/lib/auth/token-storage';
 export const UserBlock = () => {
   const { user } = useCurrentUser();
   const clear = useAuthStore((s) => s.clear);
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -76,6 +79,17 @@ export const UserBlock = () => {
             <div className="text-base font-medium">{fullName}</div>
             <div className="text-xs text-text-muted">{user.role}</div>
           </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              toggleTheme();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-base hover:bg-hover"
+          >
+            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
           <button
             type="button"
             onClick={() => {

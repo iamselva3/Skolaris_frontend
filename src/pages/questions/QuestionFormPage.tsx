@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Save, FilePlus, X, Zap, Sparkles, UploadCloud, Image as ImageIcon, FileText, Trash2 } from 'lucide-react';
+import { Save, FilePlus, X, Zap, Sparkles, UploadCloud, Image as ImageIcon, FileText, Trash2, Scissors } from 'lucide-react';
 import { uploadsApi } from '@/lib/api/uploads.api';
-import { resolveMimeType, sendBytes, ALLOWED_UPLOAD_MIMES } from '@/lib/uploads/upload-helpers';
+import { resolveMimeType, ALLOWED_UPLOAD_MIMES } from '@/lib/uploads/upload-helpers';
+import { appendImageHtml, buildStorageUrl, blobToDataUrl, uploadInlineImages } from '@/lib/uploads/upload-image';
+import { normalizeStorageUrls } from '@/lib/uploads/storage-url';
+import { SnippingTool, type SnipSource } from '@/components/ui/SnippingTool';
 import { questionsApi } from '@/lib/api/questions.api';
 import { ocrApi } from '@/lib/api/ocr.api';
 import type { TaxonomySelection } from '@/lib/api/taxonomy.api';
@@ -20,7 +23,7 @@ import {
   OptionsEditor,
   type QuestionPayload,
 } from '@/components/questions/OptionsEditor';
-import { OcrAssistPanel, type AppliedDraftInfo } from '@/components/questions/OcrAssistPanel';
+// import { OcrAssistPanel, type AppliedDraftInfo } from '@/components/questions/OcrAssistPanel';
 import { cn } from '@/lib/utils/cn';
 
 const TYPES: QuestionType[] = [
@@ -31,6 +34,7 @@ const TYPES: QuestionType[] = [
   'MATCH_FOLLOWING',
   'MATRIX_MATCH',
   'DESCRIPTIVE',
+  'VISUAL',
 ];
 const DIFFS: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
 
@@ -68,12 +72,20 @@ const AUTOSAVE_MS = 5000;
 
 /* ─────────────────────────────────────────── Page */
 
-export const QuestionFormPage = () => {
-  const { id: editId } = useParams<{ id?: string }>();
+export const QuestionFormPage = ({
+  questionId: propQuestionId,
+  onClose,
+}: {
+  questionId?: string;
+  onClose?: () => void;
+} = {}) => {
+  const { id: paramId } = useParams<{ id?: string }>();
+  const editId = propQuestionId || paramId;
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  /*
   // Capture the OCR panel state and selection reactively
   const [ocrInfo, setOcrInfo] = useState<{
     stateKind: 'idle' | 'uploading' | 'processing' | 'drafts' | 'imported' | 'failed';
@@ -84,13 +96,22 @@ export const QuestionFormPage = () => {
   } | null>(null);
 
   const isOcrRunning = ocrInfo?.stateKind === 'uploading' || ocrInfo?.stateKind === 'processing';
+  */
 
   // Snipping tool / Image mode states
-  const [inputMode, setInputMode] = useState<'text' | 'image'>('text');
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [inputMode, setInputMode] = useState<'text' | 'image' | 'snip'>('text');
   const [dragOver, setDragOver] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Snipping Tool (crop a region from a PDF/image into question or solution).
+  const [snipOpen, setSnipOpen] = useState(false);
+  const [snipTarget, setSnipTarget] = useState<'content' | 'solution'>('content');
+  const [snipSource, setSnipSource] = useState<SnipSource | null>(null);
+  const openSnip = (target: 'content' | 'solution', src: SnipSource | null = null): void => {
+    setSnipTarget(target);
+    setSnipSource(src);
+    setSnipOpen(true);
+  };
 
 
 
@@ -110,39 +131,18 @@ export const QuestionFormPage = () => {
       return;
     }
 
-    setIsUploadingImage(true);
-    setUploadProgress(0);
-
+    // Deferred upload: embed the image locally now; it's pushed to storage once,
+    // on Save. Instant, and an unsaved+refreshed image never reaches the bucket.
     try {
-      const signed = await uploadsApi.create({
-        originalName: file.name,
-        mimeType: mime,
-        sizeBytes: file.size,
-        programId: state.taxonomy.programId ?? undefined,
-        subjectId: state.taxonomy.subjectId ?? undefined,
-        category: 'question-images',
-      });
-
-      await sendBytes(signed.signedUrl, signed.httpMethod ?? 'PUT', file, mime, (pct) => {
-        setUploadProgress(pct);
-      });
-
-      await uploadsApi.complete(signed.id);
-
-      const host = import.meta.env.VITE_GCS_PUBLIC_HOST ?? 'http://localhost:4443';
-      const imageUrl = `${host}/storage/v1/b/skolaris-uploads/o/${encodeURIComponent(signed.storageKey)}?alt=media`;
-
+      const dataUrl = await blobToDataUrl(file);
       setState((prev) => ({
         ...prev,
-        contentHtml: `<p><img src="${imageUrl}" alt="Question Image" class="max-w-full rounded border border-border my-2" /></p>`,
+        contentHtml: `<p><img src="${dataUrl}" alt="Question image" class="max-w-full rounded border border-border my-2" /></p>`,
       }));
-
-      toast.success('Question image uploaded successfully!');
-    } catch (err) {
-      toast.error(apiErrorMessage(err));
-    } finally {
-      setIsUploadingImage(false);
-      setUploadProgress(0);
+      setInputMode('image');
+      toast.success('Image added — it uploads when you Save');
+    } catch {
+      toast.error('Could not read the image file');
     }
   };
 
@@ -192,19 +192,15 @@ export const QuestionFormPage = () => {
 
   const [state, setState] = useState<FormState>(() => readLocalDraft(storageKey) ?? DEFAULT_STATE);
 
-  // Extract embedded image URL from contentHtml if it exists
+  // Extract embedded image URL from contentHtml if it exists. Repoint a stale
+  // host (e.g. content authored when VITE_GCS_PUBLIC_HOST still defaulted to the
+  // retired fake-gcs) to the current read host so the preview resolves.
   const uploadedImageUrl = useMemo(() => {
     if (!state.contentHtml) return null;
     const match = state.contentHtml.match(/<img[^>]+src="([^">]+)"/);
-    return match ? match[1] : null;
+    return match ? normalizeStorageUrls(match[1]) : null;
   }, [state.contentHtml]);
 
-  // Adjust inputMode if loading an OCR draft or editing a question that has an image
-  useEffect(() => {
-    if (uploadedImageUrl) {
-      setInputMode('image');
-    }
-  }, [uploadedImageUrl]);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
   // OCR prefill: when ?draftId+?jobId provided, fetch the draft and seed state.
@@ -244,6 +240,7 @@ export const QuestionFormPage = () => {
   useEffect(() => {
     const q = existing.data;
     if (!q) return;
+    const content = (q.payload as { contentHtml?: string }).contentHtml ?? textToHtml('');
     setState({
       type: q.type,
       difficulty: q.difficulty,
@@ -253,7 +250,7 @@ export const QuestionFormPage = () => {
         topicId: q.topicId,
         chapterId: q.chapterId,
       },
-      contentHtml: (q.payload as { contentHtml?: string }).contentHtml ?? textToHtml(''),
+      contentHtml: content,
       solutionHtml: (q.payload as { explanation?: string }).explanation ?? '',
       payload: {
         ...(q.payload as Record<string, unknown>),
@@ -262,7 +259,60 @@ export const QuestionFormPage = () => {
       marks: 1,
       negativeMarks: 0,
     });
+    // Image-only legacy snips open in image mode; text+image opens in the rich
+    // editor so both render together.
+    setInputMode(isImageOnly(content) ? 'image' : 'text');
   }, [existing.data]);
+
+  // Resolve the original OCR document (PDF/image) so the Snipping Tool can crop
+  // straight from it during OCR review: jobId → job.uploadId → upload.storageKey.
+  const ocrOriginal = useQuery({
+    queryKey: ['ocr-original-source', jobId],
+    queryFn: async () => {
+      if (!jobId) return null;
+      const job = await ocrApi.getJob(jobId);
+      if (!job?.uploadId) return null;
+      const up = await uploadsApi.get(job.uploadId);
+      return { url: buildStorageUrl(up.storageKey), mime: up.mimeType, name: up.originalName };
+    },
+    enabled: !!jobId,
+    staleTime: 60_000,
+  });
+
+  // Attach a cropped snip. Deferred upload: the crop is embedded locally as a
+  // data: URL (instant — no backend round-trip) and pushed to storage once, on
+  // Save. So refreshing before Save simply drops it; nothing is orphaned in S3.
+  const attachSnip = async (blob: Blob): Promise<void> => {
+    try {
+      const dataUrl = await blobToDataUrl(blob);
+      if (snipTarget === 'solution') {
+        setState((p) => ({ ...p, solutionHtml: appendImageHtml(p.solutionHtml, dataUrl, 'Solution image') }));
+      } else {
+        setState((p) => ({ ...p, contentHtml: appendImageHtml(p.contentHtml, dataUrl, 'Question image') }));
+        setInputMode('image');
+      }
+      toast.success('Snip added — it uploads when you Save');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+      throw err; // keep the Snipping Tool open so the user can retry
+    }
+  };
+
+  // Remove ALL images from the question stem or the solution. contentHtml /
+  // solutionHtml are the only sources of truth for question images (there is no
+  // separate imageRefs array), so stripping the <img> here clears the form
+  // state, the payload built from it, and the autosaved draft at once. We persist
+  // synchronously so a refresh before the 5s autosave can't restore the image.
+  const removeImages = (target: 'content' | 'solution'): void => {
+    setState((p) => {
+      const next =
+        target === 'solution'
+          ? { ...p, solutionHtml: stripImageTags(p.solutionHtml) }
+          : { ...p, contentHtml: stripImageTags(p.contentHtml) };
+      writeLocalDraft(storageKey, next);
+      return next;
+    });
+  };
 
   /* ─── Autosave to localStorage ─── */
   const autosaveTimer = useRef<number | null>(null);
@@ -280,8 +330,6 @@ export const QuestionFormPage = () => {
 
   const submit = useMutation({
     mutationFn: async ({ addAnother }: { addAnother: boolean }) => {
-      const body = buildCreateBody(state);
-
       if (draftId && jobId) {
         // OCR path: approve atomically (creates Question + flips draft APPROVED).
         const r = await ocrApi.approve(draftId, {
@@ -296,6 +344,18 @@ export const QuestionFormPage = () => {
         });
         return { id: r.questionId, addAnother };
       }
+
+      // Deferred-image upload happens HERE, once: push any embedded data: images
+      // to storage and swap them for real read URLs before persisting the question.
+      const uploadOpts = {
+        category: 'question-images' as const,
+        programId: state.taxonomy.programId ?? undefined,
+        subjectId: state.taxonomy.subjectId ?? undefined,
+      };
+      const contentHtml = await uploadInlineImages(state.contentHtml, uploadOpts);
+      const solutionHtml = await uploadInlineImages(state.solutionHtml, uploadOpts);
+      const body = buildCreateBody({ ...state, contentHtml, solutionHtml });
+
       if (editId) {
         await questionsApi.update(editId, body);
         return { id: editId, addAnother };
@@ -312,7 +372,7 @@ export const QuestionFormPage = () => {
         setInternalDraftId(null);
         // Do NOT clear internalJobId so the job remains active in the panel
         qc.invalidateQueries({ queryKey: ['ocr-assist-drafts'] });
-        toast.success('Question approved and added to Bank. Loading next draft...');
+        toast.success('Question approved and added to Bank.');
         return;
       }
 
@@ -327,9 +387,11 @@ export const QuestionFormPage = () => {
           difficulty: prev.difficulty,
           type: prev.type,
         }));
-        navigate('/questions/new', { replace: true });
+        if (onClose) onClose();
+        else navigate('/questions/new', { replace: true });
       } else {
-        navigate(`/questions?highlight=${id}`);
+        if (onClose) onClose();
+        else navigate(`/questions?highlight=${id}`);
       }
     },
     onError: (err) => toast.error(apiErrorMessage(err)),
@@ -358,6 +420,7 @@ export const QuestionFormPage = () => {
 
   const isOcrMode = !!(draftId && jobId);
 
+  /*
   // "Use in form": seed the form fields from a (possibly inline-edited) OCR
   // draft and switch Save into approve-mode. Both editors are controlled
   // (RichTextEditor resyncs on value change; OptionsEditor renders from
@@ -380,6 +443,7 @@ export const QuestionFormPage = () => {
     }));
     toast.success('Draft loaded — review, edit, then Save to approve.');
   };
+  */
 
   return (
     <>
@@ -394,12 +458,29 @@ export const QuestionFormPage = () => {
           <>
             <Button
               variant="ghost"
-              onClick={() => navigate('/questions')}
-              disabled={ocrInfo?.isImporting || submit.isPending}
+              onClick={() => onClose ? onClose() : navigate('/questions')}
+              disabled={submit.isPending}
             >
               <X size={14} /> Cancel
             </Button>
+            <Button
+              variant="secondary"
+              loading={submit.isPending}
+              onClick={() => submit.mutate({ addAnother: true })}
+              title="Save and add another (Ctrl+D)"
+            >
+              <FilePlus size={14} /> Save &amp; add another
+            </Button>
+            <Button
+              variant="primary"
+              loading={submit.isPending}
+              onClick={() => submit.mutate({ addAnother: false })}
+              title="Save (Ctrl+S / Ctrl+Enter)"
+            >
+              <Save size={14} /> Save
+            </Button>
 
+            {/* 
             {ocrInfo?.stateKind === 'drafts' && ocrInfo.draftsCount > 0 ? (
               <>
                 {isOcrMode && (
@@ -447,6 +528,7 @@ export const QuestionFormPage = () => {
                 </Button>
               </>
             )}
+            */}
           </>
         }
       />
@@ -552,7 +634,8 @@ export const QuestionFormPage = () => {
                  Bank, bypassing the form.
               Stays mounted while a draft is applied so the teacher can swap
               drafts or switch to bulk. */}
-          {/* OCR Banner guidance */}
+          {/*
+          // OCR Banner guidance
           {ocrInfo?.stateKind === 'drafts' && ocrInfo.draftsCount > 0 && (
             <div className="relative overflow-hidden rounded-md border border-primary/20 bg-gradient-to-r from-primary-soft/40 to-hover/30 p-4 shadow-sm">
               <div className="absolute right-0 top-0 -mr-6 -mt-6 h-24 w-24 rounded-full bg-primary/5 blur-xl pointer-events-none" />
@@ -579,13 +662,13 @@ export const QuestionFormPage = () => {
             </div>
           )}
 
-          {/* OCR assist (Add Question only). Two connected workflows:
-              · "Use in form" loads one draft into THIS editor (review → Save
-                 approves it atomically).
-              · Bulk import sends all selected drafts straight to the Question
-                 Bank, bypassing the form.
-              Stays mounted while a draft is applied so the teacher can swap
-              drafts or switch to bulk. */}
+          // OCR assist (Add Question only). Two connected workflows:
+          //    · "Use in form" loads one draft into THIS editor (review → Save
+          //       approves it atomically).
+          //    · Bulk import sends all selected drafts straight to the Question
+          //       Bank, bypassing the form.
+          //    Stays mounted while a draft is applied so the teacher can swap
+          //    drafts or switch to bulk.
           {!editId ? (
             <OcrAssistPanel
               taxonomy={state.taxonomy}
@@ -597,6 +680,7 @@ export const QuestionFormPage = () => {
               }}
             />
           ) : null}
+          */}
 
           <section className="rounded-md border border-border bg-surface overflow-hidden">
             <header className="flex items-center justify-between border-b border-border-soft bg-surface px-3 py-2">
@@ -632,18 +716,31 @@ export const QuestionFormPage = () => {
                   <ImageIcon size={11} />
                   Upload Snip
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode('snip')}
+                  className={cn(
+                    "flex items-center gap-1 rounded px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                    inputMode === 'snip'
+                      ? "bg-surface text-primary shadow-sm font-semibold"
+                      : "text-text-muted hover:text-text"
+                  )}
+                >
+                  <Scissors size={11} />
+                  Snipping Tool
+                </button>
               </div>
             </header>
             
             <div className="p-3">
               {inputMode === 'text' ? (
                 <RichTextEditor
-                  value={state.contentHtml}
+                  value={normalizeStorageUrls(state.contentHtml)}
                   onChange={(html) => setState((p) => ({ ...p, contentHtml: html }))}
                   placeholder="Type the question. Use $…$ for inline math (rendered with KaTeX in the preview)."
                   minHeight={160}
                 />
-              ) : (
+              ) : inputMode === 'image' ? (
                 /* Dropzone and Paste area */
                 <div>
                   {uploadedImageUrl ? (
@@ -653,34 +750,29 @@ export const QuestionFormPage = () => {
                           src={uploadedImageUrl}
                           alt="Uploaded question snip"
                           className="max-h-80 object-contain rounded border border-border bg-surface"
+                          onError={(e) => {
+                            // Don't show a broken-image icon; hide it. The
+                            // Replace/Remove controls below stay usable.
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                          }}
                         />
-                        
-                        {/* Hover overlay with action buttons */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => imageInputRef.current?.click()}
-                            title="Upload a different image file from your device"
-                          >
-                            <UploadCloud size={12} className="mr-1" />
-                            Replace
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => setState((p) => ({ ...p, contentHtml: '' }))}
-                            title="Remove this image and clear content"
-                          >
-                            <Trash2 size={12} className="mr-1" />
-                            Remove
-                          </Button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeImages('content');
+                          }}
+                          className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:bg-danger transition-colors"
+                          title="Remove image"
+                          aria-label="Remove image"
+                        >
+                          <X size={14} />
+                        </button>
                       </div>
                       
                       <div className="flex items-center gap-4 text-xs">
                         <span className="text-success font-medium flex items-center gap-1">
-                          <Sparkles size={12} /> Image uploaded!
+                          <Sparkles size={12} /> Image added — uploads on Save
                         </span>
                         <button
                           type="button"
@@ -692,7 +784,7 @@ export const QuestionFormPage = () => {
                         <span className="text-text-faint">|</span>
                         <button
                           type="button"
-                          onClick={() => setState((p) => ({ ...p, contentHtml: '' }))}
+                          onClick={() => removeImages('content')}
                           className="text-danger hover:underline font-medium"
                         >
                           Clear Image
@@ -721,40 +813,65 @@ export const QuestionFormPage = () => {
                           : "border-border hover:border-primary hover:bg-hover"
                       )}
                     >
-                      {isUploadingImage ? (
-                        <div className="space-y-3 w-full max-w-[240px]">
-                          <div className="flex items-center justify-center text-primary animate-bounce">
-                            <UploadCloud size={32} />
-                          </div>
-                          <div className="text-sm font-semibold text-text">Uploading image...</div>
-                          <div className="text-xs text-text-muted font-mono">{uploadProgress}%</div>
-                          <div className="h-1 w-full bg-subtle rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-primary transition-all duration-150"
-                              style={{ width: `${uploadProgress}%` }}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
-                            <UploadCloud size={24} />
-                          </div>
-                          <div className="text-sm font-medium text-text">
-                            Drop a question snip or <span className="text-primary underline">browse local file</span>
-                          </div>
-                          <p className="mt-1 text-xs text-text-muted max-w-sm leading-relaxed">
-                            Drag &amp; drop a JPG/PNG/WebP/HEIC file, or click to choose from your device.
-                          </p>
-                          
-                          <div className="mt-3 inline-flex items-center gap-1.5 rounded bg-primary-soft/30 px-3 py-1 text-[11px] font-medium text-primary">
-                            <Zap size={11} className="text-yellow-500 animate-pulse" />
-                            <span>Take a snip (`Win+Shift+S`) and press `Ctrl+V` to paste here!</span>
-                          </div>
-                        </>
-                      )}
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
+                        <UploadCloud size={24} />
+                      </div>
+                      <div className="text-sm font-medium text-text">
+                        Drop a question snip or <span className="text-primary underline">browse local file</span>
+                      </div>
+                      <p className="mt-1 text-xs text-text-muted max-w-sm leading-relaxed">
+                        Drag &amp; drop a JPG/PNG/WebP/HEIC file, or click to choose from your device.
+                      </p>
+
+                      <div className="mt-3 inline-flex items-center gap-1.5 rounded bg-primary-soft/30 px-3 py-1 text-[11px] font-medium text-primary">
+                        <Zap size={11} className="text-yellow-500 animate-pulse" />
+                        <span>Take a snip (`Win+Shift+S`) and press `Ctrl+V` to paste here!</span>
+                      </div>
                     </div>
                   )}
+                </div>
+              ) : (
+                /* Snipping Tool launcher */
+                <div className="space-y-3">
+                  <div className="rounded-md border border-dashed border-border p-6 text-center">
+                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
+                      <Scissors size={22} />
+                    </div>
+                    <div className="text-sm font-medium text-text">Snip from a PDF or image</div>
+                    <p className="mx-auto mt-1 max-w-md text-xs text-text-muted leading-relaxed">
+                      Upload a PDF or image, drag a box over the exact region — graph, formula,
+                      diagram, table, map or handwriting — and crop it straight into the question.
+                      No external snipping tools needed.
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                      <Button variant="primary" size="sm" onClick={() => openSnip('content')}>
+                        <Scissors size={14} className="mr-1" /> Open Snipping Tool
+                      </Button>
+                      {ocrOriginal.data ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() =>
+                            openSnip('content', {
+                              kind: 'url',
+                              url: ocrOriginal.data!.url,
+                              mime: ocrOriginal.data!.mime,
+                              name: ocrOriginal.data!.name,
+                            })
+                          }
+                          title="Crop directly from the document this OCR draft came from"
+                        >
+                          <FileText size={14} className="mr-1" /> Snip from original document
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {uploadedImageUrl ? (
+                    <p className="text-xs text-text-muted">
+                      Tip: switch to <strong>Write Text</strong> to see snipped images inline with
+                      your text.
+                    </p>
+                  ) : null}
                 </div>
               )}
               <input
@@ -781,8 +898,28 @@ export const QuestionFormPage = () => {
           </PanelSection>
 
           <PanelSection title="Solution / explanation">
+            <div className="mb-2 flex justify-end gap-2">
+              {/<img/i.test(state.solutionHtml) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeImages('solution')}
+                  title="Remove image(s) from the solution"
+                >
+                  <Trash2 size={13} className="mr-1" /> Remove image
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openSnip('solution')}
+                title="Crop a region from a PDF/image into the solution"
+              >
+                <Scissors size={13} className="mr-1" /> Snip image
+              </Button>
+            </div>
             <RichTextEditor
-              value={state.solutionHtml}
+              value={normalizeStorageUrls(state.solutionHtml)}
               onChange={(html) => setState((p) => ({ ...p, solutionHtml: html }))}
               placeholder="Optional. Shown after a student submits."
               minHeight={100}
@@ -801,6 +938,14 @@ export const QuestionFormPage = () => {
           ) : null}
         </main>
       </div>
+
+      <SnippingTool
+        open={snipOpen}
+        onClose={() => setSnipOpen(false)}
+        source={snipSource}
+        onCropped={attachSnip}
+        title={snipTarget === 'solution' ? 'Snip → Solution' : 'Snip → Question'}
+      />
     </>
   );
 };
@@ -877,6 +1022,7 @@ const resetPayloadFor = (t: QuestionType, prev: QuestionPayload): QuestionPayloa
         { left: '', right: '' },
       ],
     };
+  if (t === 'VISUAL') return { optionCount: prev.optionCount ?? 4, correctOption: prev.correctOption ?? 0 };
   return {};
 };
 
@@ -900,6 +1046,25 @@ const buildCreateBody = (s: FormState) => {
       })),
     };
   }
+  if (s.type === 'VISUAL') {
+    const count = s.payload.optionCount ?? 4;
+    const correct = s.payload.correctOption ?? 0;
+    return {
+      type: s.type,
+      difficulty: s.difficulty,
+      ...taxonomy,
+      payload: {
+        contentHtml: s.contentHtml,
+        explanation: s.solutionHtml,
+        optionCount: count,
+      },
+      options: Array.from({ length: count }, (_, i) => ({
+        label: String(i + 1),
+        isCorrect: i + 1 === correct,
+      })),
+    };
+  }
+
   return {
     type: s.type,
     difficulty: s.difficulty,
@@ -927,6 +1092,36 @@ const nonChoicePayload = (s: FormState): Record<string, unknown> => {
   }
 };
 
+/** Remove every <img> (and any wrapper <p> left empty by it) from an HTML
+ *  string, preserving surrounding text. Single source of truth for "remove
+ *  image" so no broken ref survives in question/solution content. */
+const stripImageTags = (html: string): string =>
+  (html ?? '')
+    .replace(/<img[^>]*>/gi, '')
+    .replace(/<p>(?:\s|&nbsp;)*<\/p>/gi, '')
+    .trim();
+
+/** Remove only DEFERRED (data:) images. Used when persisting the autosave draft
+ *  so an unsaved snip is dropped on refresh (it was never uploaded → no S3
+ *  orphan). Already-uploaded real URLs are kept. */
+const stripDataImages = (html: string): string =>
+  (html ?? '')
+    .replace(/<img[^>]+src="data:[^"]*"[^>]*>/gi, '')
+    .replace(/<p>(?:\s|&nbsp;)*<\/p>/gi, '');
+
+/** True when the HTML contains an <img> and no meaningful text — a legacy
+ *  image-only snip, which should open in "Upload Snip" mode. Text+image content
+ *  returns false so it opens in the rich editor where both render. */
+const isImageOnly = (html: string): boolean => {
+  if (!/<img/i.test(html)) return false;
+  const text = html
+    .replace(/<img[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .trim();
+  return text.length === 0;
+};
+
 const textToHtml = (text: string): string => {
   if (!text) return '';
   // Naive: wrap each non-empty line in <p>.
@@ -944,7 +1139,12 @@ const readLocalDraft = (key: string): FormState | null => {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    return JSON.parse(raw) as FormState;
+    const parsed = JSON.parse(raw) as FormState;
+    if (parsed && !TYPES.includes(parsed.type)) {
+      parsed.type = 'SINGLE_CHOICE';
+      parsed.payload = resetPayloadFor('SINGLE_CHOICE', parsed.payload);
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -952,7 +1152,14 @@ const readLocalDraft = (key: string): FormState | null => {
 
 const writeLocalDraft = (key: string, state: FormState): void => {
   try {
-    localStorage.setItem(key, JSON.stringify(state));
+    // Never persist deferred (data:) images — they upload on Save, so an unsaved
+    // image must not survive a refresh.
+    const persist: FormState = {
+      ...state,
+      contentHtml: stripDataImages(state.contentHtml),
+      solutionHtml: stripDataImages(state.solutionHtml),
+    };
+    localStorage.setItem(key, JSON.stringify(persist));
   } catch {
     /* quota or private mode — ignore */
   }

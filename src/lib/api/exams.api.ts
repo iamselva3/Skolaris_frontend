@@ -15,6 +15,8 @@ export interface AntiCheatConfig {
   flagAtViolationCount: number;
 }
 
+export type ExamKind = 'PAPER' | 'TEST';
+
 export interface Exam {
   id: string;
   tenantId: string;
@@ -26,6 +28,8 @@ export interface Exam {
   defaultNegativeMarks: number;
   randomizeQuestions: boolean;
   randomizeOptions: boolean;
+  /** Composition (PAPER) vs delivery (TEST) asset. Optional only for forward-compat with cached responses. */
+  kind?: ExamKind;
   status: ExamStatus;
   opensAt: string | null;
   closesAt: string | null;
@@ -116,6 +120,12 @@ export const examsApi = {
   },
   create: async (body: CreateExamBody): Promise<Exam> => {
     const r = await apiClient.post<ApiEnvelope<Exam>>('/exams', body);
+    return r.data.data;
+  },
+  /** Snapshot a standalone Question Paper into a new DRAFT test (copies the
+   *  question set). The teacher then configures schedule/assignments + publishes. */
+  createFromPaper: async (paperId: string): Promise<Exam> => {
+    const r = await apiClient.post<ApiEnvelope<Exam>>(`/exams/from-paper/${paperId}`);
     return r.data.data;
   },
   update: async (id: string, body: Partial<CreateExamBody>): Promise<Exam> => {

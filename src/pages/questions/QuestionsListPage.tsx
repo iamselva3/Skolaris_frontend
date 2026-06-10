@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { FileText, Pencil, Sparkles, Trash2, X, ChevronDown } from 'lucide-react';
+import { Eye, FileText, Pencil, Sparkles, Trash2, X, ChevronDown } from 'lucide-react';
 import { questionsApi, type Question } from '@/lib/api/questions.api';
+import { QuestionViewModal } from '@/components/questions/QuestionViewModal';
 import {
   programsApi,
   subjectsApi,
@@ -31,6 +32,7 @@ const TYPES: QuestionType[] = [
   'MATCH_FOLLOWING',
   'MATRIX_MATCH',
   'DESCRIPTIVE',
+  'VISUAL',
 ];
 const DIFFS: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
 const PAGE_SIZES = [25, 50, 100, 200];
@@ -67,6 +69,7 @@ export const QuestionsListPage = () => {
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
+  const [viewing, setViewing] = useState<Question | null>(null);
 
   const debounced = useDebounce(q, 300);
 
@@ -363,6 +366,14 @@ export const QuestionsListPage = () => {
         header: '',
         cell: (c) => (
           <div className="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              title="View"
+              onClick={() => setViewing(c.row.original)}
+              className="rounded p-1 text-text-faint hover:bg-hover hover:text-text"
+            >
+              <Eye size={12} />
+            </button>
             <Link
               to={`/questions/${c.row.original.id}/edit`}
               className="rounded p-1 text-text-faint hover:bg-hover hover:text-text"
@@ -395,9 +406,14 @@ export const QuestionsListPage = () => {
         title="Question bank"
         description="Operational inventory · OCR-imported + manually authored"
         actions={
-          <Link to="/questions/new">
-            <Button variant="primary">+ Add question</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link to="/question-papers">
+              <Button variant="secondary">Add question paper</Button>
+            </Link>
+            <Link to="/questions/new">
+              <Button variant="primary">+ Add question</Button>
+            </Link>
+          </div>
         }
       />
 
@@ -579,6 +595,8 @@ export const QuestionsListPage = () => {
           />
         ) : null}
       </div>
+
+      <QuestionViewModal question={viewing} onClose={() => setViewing(null)} />
 
       <ConfirmDialog
         open={confirmBulk}

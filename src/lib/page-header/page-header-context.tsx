@@ -11,6 +11,13 @@ export interface PageHeaderState {
   breadcrumb: Crumb[];
   description?: string;
   actions?: ReactNode;
+  /**
+   * Opaque token a page bumps when its `actions` change in a way that must be
+   * republished (e.g. a button's disabled state depends on local state). The
+   * republish key intentionally ignores `actions` identity to avoid render
+   * loops, so without this a stateful action button would render stale.
+   */
+  actionsKey?: string;
 }
 
 export interface PageHeaderContextValue {

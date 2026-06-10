@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { branchesApi } from '@/lib/api/branches.api';
+import { classroomsApi } from '@/lib/api/classrooms.api';
 import { studentsApi, type Student } from '@/lib/api/students.api';
 import { apiErrorMessage } from '@/lib/api/client';
 import { useDebounce } from '@/lib/hooks/use-debounce';
@@ -29,18 +30,15 @@ const createSchema = z.object({
   name: z.string().min(1).max(120),
   password: z.string().min(8).max(128),
   branchId: z.string().uuid().optional().or(z.literal('')),
-  classLabel: z.string().max(40).optional().or(z.literal('')),
-  rollNo: z.string().max(40).optional().or(z.literal('')),
-  parentContact: z.string().max(80).optional().or(z.literal('')),
+  parentContact: z.string().regex(/^\d{10}$/, 'Must be exactly 10 digits').optional().or(z.literal('')),
 });
 type CreateForm = z.infer<typeof createSchema>;
 
 const editSchema = z.object({
   name: z.string().min(1).max(120),
   branchId: z.string().uuid().optional().or(z.literal('')),
-  classLabel: z.string().max(40).optional().or(z.literal('')),
-  rollNo: z.string().max(40).optional().or(z.literal('')),
-  parentContact: z.string().max(80).optional().or(z.literal('')),
+  rollNo: z.string().max(80).optional().or(z.literal('')),
+  parentContact: z.string().regex(/^\d{10}$/, 'Must be exactly 10 digits').optional().or(z.literal('')),
   status: z.enum(['ACTIVE', 'DISABLED']),
 });
 type EditForm = z.infer<typeof editSchema>;
@@ -48,7 +46,9 @@ type EditForm = z.infer<typeof editSchema>;
 export const StudentsListPage = () => {
   const [search, setSearch] = useState('');
   const effectiveBranchId = useActiveBranch();
-  const [classFilter, setClassFilter] = useState('');
+  const [batchFilter, setBatchFilter] = useState('');
+  const [sectionFilter, setSectionFilter] = useState('');
+  const [subjectFilter, setSubjectFilter] = useState('');
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [modalOpen, setModalOpen] = useState(false);
@@ -66,12 +66,55 @@ export const StudentsListPage = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  const classrooms = useQuery({
+    queryKey: ['classrooms', { branchId: effectiveBranchId }],
+    queryFn: () => classroomsApi.list({ branchId: effectiveBranchId || undefined, limit: 200 }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // A student joins the classroom system only once an admin/teacher allocates
+  // them to a classroom. Filtering is driven ENTIRELY by classroom membership:
+  // the backend matches student → membership → classroom.{name,section}. The
+  // batch/section the user picks come from the admin-created classrooms list,
+  // never from any field on the student record. Picking a batch alone returns
+  // every member across that batch's sections; adding a section narrows it.
+  const classroomList = classrooms.data?.data ?? [];
+  const isUnallocated = batchFilter === 'unallocated';
+  const subjectOptions = [
+    ...new Set(
+      classroomList
+        .map((c) => c.subject)
+        .filter((s): s is string => !!s),
+    ),
+  ].sort();
+  const batchOptions = [
+    ...new Set(
+      classroomList
+        .filter((c) => (subjectFilter ? c.subject === subjectFilter : true))
+        .map((c) => c.name)
+    ),
+  ].sort();
+  const sectionOptions = [
+    ...new Set(
+      classroomList
+        .filter((c) => (subjectFilter ? c.subject === subjectFilter : true))
+        .filter((c) => (batchFilter && !isUnallocated ? c.name === batchFilter : true))
+        .map((c) => c.section)
+        .filter((s): s is string => !!s),
+    ),
+  ].sort();
+
   const list = useQuery({
-    queryKey: ['students', { q: debouncedSearch, branchId: effectiveBranchId, offset, pageSize }],
+    queryKey: ['students', { q: debouncedSearch, branchId: effectiveBranchId, batchFilter, sectionFilter, subjectFilter, offset, pageSize }],
     queryFn: () =>
       studentsApi.list({
         q: debouncedSearch || undefined,
         branchId: effectiveBranchId || undefined,
+        // Resolved to classroom membership server-side (classroom.name / .section).
+        batch: !isUnallocated && batchFilter ? batchFilter : undefined,
+        section: !isUnallocated && sectionFilter ? sectionFilter : undefined,
+        subject: !isUnallocated && subjectFilter ? subjectFilter : undefined,
+        unallocated: isUnallocated ? true : undefined,
         limit: pageSize,
         offset,
       }),
@@ -80,22 +123,7 @@ export const StudentsListPage = () => {
 
   const branchMap = new Map((branches.data?.data ?? []).map((b) => [b.id, b.name]));
 
-  // Client-side class filter (classLabel is a free-text field, not indexed)
-  const visibleRows = classFilter
-    ? (list.data?.data ?? []).filter(
-        (s) =>
-          s.classLabel?.toLowerCase().includes(classFilter.toLowerCase()),
-      )
-    : (list.data?.data ?? []);
-
-  // Derive unique class labels from current page for the class filter dropdown
-  const classLabels = [
-    ...new Set(
-      (list.data?.data ?? [])
-        .map((s) => s.classLabel)
-        .filter((c): c is string => !!c),
-    ),
-  ].sort();
+  const visibleRows = list.data?.data ?? [];
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => studentsApi.disable(id),
@@ -109,17 +137,34 @@ export const StudentsListPage = () => {
 
   const resetFilters = () => {
     setSearch('');
-    setClassFilter('');
+    setBatchFilter('');
+    setSectionFilter('');
+    setSubjectFilter('');
     setOffset(0);
   };
-  const hasFilters = !!search || !!effectiveBranchId || !!classFilter;
+  const hasFilters = !!search || !!effectiveBranchId || !!batchFilter || !!sectionFilter || !!subjectFilter;
   const onPageSizeChange = (n: number) => { setPageSize(n); setOffset(0); };
 
   const columns: ColumnDef<Student>[] = [
     { header: 'Name', accessorKey: 'name' },
     { header: 'Email', accessorKey: 'email' },
+    { header: 'Mobile', cell: (c) => c.row.original.parentContact ?? '—' },
     { header: 'Roll no', cell: (c) => c.row.original.rollNo ?? '—' },
-    { header: 'Class', cell: (c) => c.row.original.classLabel ?? '—' },
+    {
+      header: 'Discipline',
+      cell: (c) =>
+        c.row.original.subject ?? <span className="text-text-faint">—</span>,
+    },
+    {
+      header: 'Batch',
+      cell: (c) =>
+        c.row.original.batch ?? <span className="text-text-faint">Unallocated</span>,
+    },
+    {
+      header: 'Section',
+      cell: (c) =>
+        c.row.original.section ? `Sec ${c.row.original.section}` : <span className="text-text-faint">—</span>,
+    },
     {
       header: 'Branch',
       cell: (c) => {
@@ -192,15 +237,55 @@ export const StudentsListPage = () => {
         />
 
         <Select
-          value={classFilter}
+          value={subjectFilter}
           onChange={(e) => {
-            setClassFilter(e.target.value);
+            setSubjectFilter(e.target.value);
+            setBatchFilter('');
+            setSectionFilter('');
+            setOffset(0);
           }}
           className="max-w-[160px]"
         >
-          <option value="">All classes</option>
-          {classLabels.map((cl) => (
-            <option key={cl} value={cl}>{cl}</option>
+          <option value="">All disciplines</option>
+          {subjectOptions.map((subject) => (
+            <option key={subject} value={subject}>
+              {subject}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          value={batchFilter}
+          onChange={(e) => {
+            setBatchFilter(e.target.value);
+            setSectionFilter('');
+            setOffset(0);
+          }}
+          className="max-w-[160px]"
+        >
+          <option value="">All batches</option>
+          <option value="unallocated">Unallocated</option>
+          {batchOptions.map((batch) => (
+            <option key={batch} value={batch}>
+              {batch}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          value={sectionFilter}
+          onChange={(e) => {
+            setSectionFilter(e.target.value);
+            setOffset(0);
+          }}
+          disabled={!batchFilter || isUnallocated || sectionOptions.length === 0}
+          className="max-w-[140px]"
+        >
+          <option value="">All sections</option>
+          {sectionOptions.map((section) => (
+            <option key={section} value={section}>
+              Sec {section}
+            </option>
           ))}
         </Select>
 
@@ -227,7 +312,7 @@ export const StudentsListPage = () => {
           </>
         }
       />
-      {list.data && !classFilter ? (
+      {list.data ? (
         <Pagination
           total={list.data.meta.total}
           limit={pageSize}
@@ -351,8 +436,6 @@ const CreateStudentModal = ({ open, branchOptions, isSuperAdmin, userBranchId, o
                 name: v.name,
                 password: v.password,
                 branchId: isSuperAdmin ? (v.branchId ?? '') : (userBranchId ?? ''),
-                classLabel: v.classLabel || undefined,
-                rollNo: v.rollNo || undefined,
                 parentContact: v.parentContact || undefined,
               }),
             )}
@@ -382,16 +465,8 @@ const CreateStudentModal = ({ open, branchOptions, isSuperAdmin, userBranchId, o
             </Select>
           </FormField>
         )}
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          <FormField label="Class label" htmlFor="scl" className="!mt-0">
-            <Input id="scl" {...register('classLabel')} />
-          </FormField>
-          <FormField label="Roll no" htmlFor="srn" className="!mt-0">
-            <Input id="srn" {...register('rollNo')} />
-          </FormField>
-        </div>
-        <FormField label="Parent contact" htmlFor="spc" className="mt-3">
-          <Input id="spc" {...register('parentContact')} />
+        <FormField label="Parent contact" htmlFor="spc" className="mt-3" error={formState.errors.parentContact?.message}>
+          <Input id="spc" invalid={!!formState.errors.parentContact} {...register('parentContact')} />
         </FormField>
       </form>
     </Modal>
@@ -414,7 +489,6 @@ const EditStudentModal = ({ student, branchOptions, isSuperAdmin, onClose, onSav
     defaultValues: {
       name: student.name,
       branchId: student.branchId ?? '',
-      classLabel: student.classLabel ?? '',
       rollNo: student.rollNo ?? '',
       parentContact: student.parentContact ?? '',
       status: student.status,
@@ -425,7 +499,6 @@ const EditStudentModal = ({ student, branchOptions, isSuperAdmin, onClose, onSav
     mutationFn: async (v: EditForm) => {
       await studentsApi.update(student.id, {
         branchId: isSuperAdmin ? (v.branchId || undefined) : undefined,
-        classLabel: v.classLabel || null,
         rollNo: v.rollNo || null,
         parentContact: v.parentContact || null,
       });
@@ -474,16 +547,11 @@ const EditStudentModal = ({ student, branchOptions, isSuperAdmin, onClose, onSav
           </Select>
         </FormField>
       )}
-      <div className="grid grid-cols-2 gap-3 mt-3">
-        <FormField label="Class label" htmlFor="escl" className="!mt-0">
-          <Input id="escl" {...register('classLabel')} />
-        </FormField>
-        <FormField label="Roll no" htmlFor="esrn" className="!mt-0">
-          <Input id="esrn" {...register('rollNo')} />
-        </FormField>
-      </div>
-      <FormField label="Parent contact" htmlFor="espc" className="mt-3">
-        <Input id="espc" {...register('parentContact')} />
+      <FormField label="Roll no" htmlFor="esrn" className="mt-3">
+        <Input id="esrn" {...register('rollNo')} />
+      </FormField>
+      <FormField label="Parent contact" htmlFor="espc" className="mt-3" error={formState.errors.parentContact?.message}>
+        <Input id="espc" invalid={!!formState.errors.parentContact} {...register('parentContact')} />
       </FormField>
       <FormField label="Status" htmlFor="esst" error={formState.errors.status?.message}>
         <Select id="esst" {...register('status')}>

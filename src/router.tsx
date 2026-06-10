@@ -18,6 +18,9 @@ import { ExamsListPage } from '@/pages/exams/ExamsListPage';
 import { ExamComposePage } from '@/pages/exams/ExamComposePage';
 import { ExamDetailPage } from '@/pages/exams/ExamDetailPage';
 import { ExamAttemptDetailPage } from '@/pages/exams/ExamAttemptDetailPage';
+import { ManageQuestionPapersPage } from '@/pages/question-papers/ManageQuestionPapersPage';
+import { ComposeQuestionPaperPage } from '@/pages/question-papers/ComposeQuestionPaperPage';
+import { ManageTestsPage } from '@/pages/tests/ManageTestsPage';
 import { QuestionsListPage } from '@/pages/questions/QuestionsListPage';
 import { TaxonomyAdminPage } from '@/pages/taxonomy/TaxonomyAdminPage';
 import { BranchesListPage } from '@/pages/branches/BranchesListPage';
@@ -105,6 +108,9 @@ export const router = createBrowserRouter([
       { path: 'uploads/new',              element: Admin(<UploadNewPage />) },
       { path: 'uploads/:uploadId/review', element: Admin(<UploadReviewPage />) },
       { path: 'exams',                    element: Admin(<ExamsListPage />) },
+      { path: 'question-papers',          element: Admin(<ManageQuestionPapersPage />) },
+      { path: 'question-papers/:id/compose', element: Admin(<ComposeQuestionPaperPage />) },
+      { path: 'tests',                    element: Admin(<ManageTestsPage />) },
       { path: 'exams/new',                element: Admin(<ExamsListPage />) /* TODO Phase D: dedicated compose entry */ },
       { path: 'exams/:id',                element: Admin(<ExamDetailPage />) },
       { path: 'exams/:id/compose',        element: Admin(<ExamComposePage />) },

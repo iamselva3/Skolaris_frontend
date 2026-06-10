@@ -11,6 +11,7 @@ export interface Classroom {
   section: string | null;
   subject: string | null;
   createdBy: string;
+  teacherIds?: string[];
   studentCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -22,15 +23,19 @@ export interface CreateClassroomBody {
   year?: string;
   section?: string;
   subject?: string;
-  teacherId?: string;
+  teacherIds?: string[];
 }
 
 export const classroomsApi = {
   list: async (
-    params: { branchId?: string; teacherId?: string; limit?: number; offset?: number } = {},
+    params: { branchId?: string; teacherId?: string; name?: string; section?: string; year?: string; subject?: string; search?: string; limit?: number; offset?: number } = {},
   ): Promise<PaginatedResponse<Classroom>> => {
     const r = await apiClient.get<PaginatedResponse<Classroom>>('/classrooms', { params });
     return r.data;
+  },
+  getFilters: async (branchId?: string): Promise<{ names: string[]; sections: string[]; years: string[]; subjects: string[] }> => {
+    const r = await apiClient.get<ApiEnvelope<{ names: string[]; sections: string[]; years: string[]; subjects: string[] }>>('/classrooms/filters', { params: { branchId } });
+    return r.data.data;
   },
   get: async (id: string): Promise<Classroom> => {
     const r = await apiClient.get<ApiEnvelope<Classroom>>(`/classrooms/${id}`);

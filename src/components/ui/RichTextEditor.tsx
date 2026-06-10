@@ -1,5 +1,11 @@
 import { useEffect } from 'react';
-import { EditorContent, useEditor } from '@tiptap/react';
+import {
+  EditorContent,
+  useEditor,
+  ReactNodeViewRenderer,
+  NodeViewWrapper,
+  type NodeViewProps,
+} from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -14,8 +20,47 @@ import {
   Quote,
   Sigma,
   Underline as UnderlineIcon,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
+
+/**
+ * In-editor image rendered with a per-image delete (×) button, so each image
+ * can be removed individually. The button lives only in the editor DOM —
+ * getHTML() still serializes a plain <img>, so save/upload logic is unaffected.
+ */
+const ImageNodeView = ({ node, getPos, editor }: NodeViewProps) => {
+  const { src, alt } = node.attrs as { src: string; alt?: string };
+  const remove = (): void => {
+    if (typeof getPos !== 'function') return;
+    const pos = getPos();
+    if (pos == null) return;
+    editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
+  };
+  return (
+    <NodeViewWrapper className="relative my-2 inline-block" contentEditable={false} draggable={false}>
+      <img src={src} alt={alt ?? ''} className="max-w-full rounded border border-border" />
+      {editor.isEditable && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={remove}
+          className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm transition-colors hover:bg-danger"
+          title="Remove this image"
+          aria-label="Remove this image"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </NodeViewWrapper>
+  );
+};
+
+const ImageWithControls = Image.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(ImageNodeView);
+  },
+});
 
 interface Props {
   value: string;
@@ -49,9 +94,13 @@ export const RichTextEditor = ({
       // Without an image node, StarterKit silently strips <img> on setContent —
       // which would drop teacher-uploaded/snipped question images the moment
       // the editor loaded that HTML. Keep images as first-class nodes.
-      Image.configure({
+      // allowBase64 MUST be true: deferred snips/uploads are embedded as `data:`
+      // URLs until Save, and base64 srcs are dropped on parse without it (the
+      // image would vanish when switching into Write Text). The custom node view
+      // adds a per-image × delete button.
+      ImageWithControls.configure({
         inline: false,
-        allowBase64: false,
+        allowBase64: true,
         HTMLAttributes: { class: 'max-w-full rounded border border-border my-2' },
       }),
     ],

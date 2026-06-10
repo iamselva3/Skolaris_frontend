@@ -347,15 +347,15 @@ export const LoginPage = () => {
         
       </div>
 
-      {/* Privacy Policy Link - Bottom Right */}
-      <div className="absolute bottom-6 right-8 text-right z-20">
+      {/* Footer Area: Privacy Policy & Credits */}
+      <div className="absolute bottom-6 w-full px-8 flex justify-between items-center z-20 text-[12px] font-medium text-slate-400">
         <a 
           href="#"
           onClick={(e) => {
             e.preventDefault();
             toast.info('Privacy Policy is currently under review.');
           }}
-          className="text-[12px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
+          className="hover:text-slate-600 transition-colors"
         >
           Privacy Policy
         </a>

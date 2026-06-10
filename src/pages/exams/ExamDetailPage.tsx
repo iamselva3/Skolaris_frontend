@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { examsApi, type ExamAttemptSummary } from '@/lib/api/exams.api';
+import { studentsApi } from '@/lib/api/students.api';
 import { analyticsApi } from '@/lib/api/analytics.api';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -24,6 +25,28 @@ export const ExamDetailPage = () => {
     queryFn: () => examsApi.listAttempts(id, { limit: 200 }),
     enabled: tab === 'attempts',
   });
+  // Resolve studentId → name/email for the attempts table (the attempts API
+  // returns only studentId). Existing endpoint, display-only. The list endpoint
+  // caps `limit` at 200, so page through to cover larger student bodies.
+  const students = useQuery({
+    queryKey: ['students', 'for-attempts'],
+    queryFn: async () => {
+      const PAGE = 200;
+      const all: Awaited<ReturnType<typeof studentsApi.list>>['data'] = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const page = await studentsApi.list({ limit: PAGE, offset });
+        all.push(...page.data);
+        if (page.data.length < PAGE || all.length >= page.meta.total) break;
+      }
+      return all;
+    },
+    enabled: tab === 'attempts',
+    staleTime: 5 * 60 * 1000,
+  });
+  const studentMap = useMemo(
+    () => new Map((students.data ?? []).map((s) => [s.id, s])),
+    [students.data],
+  );
   const summary = useQuery({
     queryKey: ['exam', id, 'summary'],
     queryFn: () => analyticsApi.examSummary(id),
@@ -32,12 +55,22 @@ export const ExamDetailPage = () => {
 
   const columns: ColumnDef<ExamAttemptSummary>[] = [
     {
-      header: 'Attempt',
-      cell: (c) => (
-        <Link className="text-primary hover:underline" to={`/exams/${id}/attempts/${c.row.original.id}`}>
-          {c.row.original.id.slice(0, 8)}…
-        </Link>
-      ),
+      header: 'Student',
+      cell: (c) => {
+        const s = studentMap.get(c.row.original.studentId);
+        return (
+          <Link
+            className="text-primary hover:underline"
+            to={`/exams/${id}/attempts/${c.row.original.id}`}
+          >
+            {s?.name ?? `${c.row.original.studentId.slice(0, 8)}…`}
+          </Link>
+        );
+      },
+    },
+    {
+      header: 'Email',
+      cell: (c) => studentMap.get(c.row.original.studentId)?.email ?? '—',
     },
     { header: 'Status', cell: (c) => <StatusBadge value={c.row.original.status} /> },
     { header: 'Score', cell: (c) => c.row.original.score ?? '—' },

@@ -4,6 +4,7 @@ import { dashboardApi } from '@/lib/api/dashboard.api';
 import { attemptsApi, type MyExamItem } from '@/lib/api/attempts.api';
 import { getModuleCardsForRole } from '@/lib/dashboard/module-cards.config';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { useActiveBranch } from '@/lib/hooks/use-active-branch';
 import { usePageHeader } from '@/lib/page-header/use-page-header';
 import { ModuleCardGrid } from '@/components/dashboard/ModuleCardGrid';
 import { OcrReviewQueuePanel } from '@/components/dashboard/OcrReviewQueuePanel';
@@ -39,9 +40,13 @@ export const DashboardPage = () => {
 
   const isStudent = user?.role === 'STUDENT';
 
+  // Scope KPIs to the active branch. Including it in the key makes the query
+  // refetch automatically whenever the branch picker changes.
+  const activeBranchId = useActiveBranch();
+
   const summary = useQuery({
-    queryKey: ['dashboard', 'summary'],
-    queryFn: dashboardApi.summary,
+    queryKey: ['dashboard', 'summary', activeBranchId],
+    queryFn: () => dashboardApi.summary(activeBranchId),
     staleTime: 30_000,
     refetchOnWindowFocus: true,
   });
@@ -114,8 +119,6 @@ export const DashboardPage = () => {
           <TodaysExamsPanel items={summary.data?.todaysExams ?? []} />
         </div>
       )}
-
-
     </>
   );
 };

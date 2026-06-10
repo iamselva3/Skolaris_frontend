@@ -4,6 +4,7 @@ const TONE: Record<string, BadgeTone> = {
   ACTIVE: 'success',
   GRADED: 'success',
   APPROVED: 'success',
+  COMPLETED: 'success',
   READY_FOR_REVIEW: 'info',
   IN_PROGRESS: 'info',
   LIVE: 'info',

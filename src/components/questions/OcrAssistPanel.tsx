@@ -31,9 +31,14 @@ import { Button } from '@/components/ui/Button';
 import { Loader } from '@/components/ui/Loader';
 import { Select } from '@/components/ui/Select';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { VisualReviewCard, type VisualApprovePayload } from '@/components/questions/VisualReviewCard';
 import { cn } from '@/lib/utils/cn';
 
 const MAX_BYTES = 25 * 1024 * 1024;
+const READ_HOST = import.meta.env.VITE_GCS_PUBLIC_HOST ?? 'http://localhost:4443';
+/** Read-proxy URL for a cropped question-snapshot key. */
+const snapshotUrl = (key: string): string =>
+  `${READ_HOST}/storage/v1/b/skolaris-uploads/o/${encodeURIComponent(key)}?alt=media`;
 
 export interface AppliedDraftInfo {
   draftId: string;
@@ -315,6 +320,16 @@ export const OcrAssistPanel = ({
   /* ── 4) Bulk import ───────────────────────────────────────────────────── */
   const bulkImport = useMutation({
     mutationFn: async () => {
+      // Screenshot-first: visual drafts can't be bulk-approved because each
+      // needs a teacher-chosen answer. Guide to per-question review instead.
+      const visualSelected = Array.from(selected).filter(
+        (id) => !discarded.has(id) && edits[id]?.detectedType === 'VISUAL',
+      );
+      if (visualSelected.length > 0) {
+        throw new Error(
+          'Visual questions are approved one at a time — click "Review" on a question, pick the answer, then Approve.',
+        );
+      }
       const items: BulkApproveItem[] = Array.from(selected)
         .filter((id) => !discarded.has(id))
         .map((id) => {
@@ -360,6 +375,57 @@ export const OcrAssistPanel = ({
       onImported?.(createdIds);
     },
     onError: (err) => toast.error(apiErrorMessage(err)),
+  });
+
+  /* ── 4b) Per-draft approve as a Visual Question ───────────────────────────
+     Screenshot-first: the cropped image IS the content; the teacher only picks
+     the answer mode + answer. Maps the chosen mode → question type, exactly
+     like UploadReviewPage. */
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const approveVisual = useMutation({
+    mutationFn: ({ draftId, payload }: { draftId: string; payload: VisualApprovePayload }) => {
+      const taxo = {
+        programId: taxonomy.programId ?? undefined,
+        subjectId: taxonomy.subjectId ?? undefined,
+        topicId: taxonomy.topicId ?? undefined,
+        chapterId: taxonomy.chapterId ?? undefined,
+        difficulty: batchDifficulty,
+      };
+      const explanation = payload.solutionHtml || undefined;
+      // A teacher re-crop overrides the server-built snapshot stem.
+      const recrop = payload.contentHtmlOverride ? { contentHtml: payload.contentHtmlOverride } : {};
+      if (payload.mode === 'TRUE_FALSE') {
+        return ocrApi.approve(draftId, {
+          type: 'TRUE_FALSE',
+          correctAnswer: { correct: payload.correctBool, explanation, ...recrop },
+          ...taxo,
+        });
+      }
+      if (payload.mode === 'DESCRIPTIVE') {
+        return ocrApi.approve(draftId, {
+          type: 'DESCRIPTIVE',
+          correctAnswer: { rubric: payload.solutionHtml || '', explanation, ...recrop },
+          ...taxo,
+        });
+      }
+      return ocrApi.approve(draftId, {
+        type: 'VISUAL',
+        options: Array.from({ length: payload.optionCount }, (_, i) => ({
+          label: String(i + 1),
+          isCorrect: i + 1 === payload.correctOption,
+        })),
+        correctAnswer: { ...(explanation ? { explanation } : {}), ...recrop },
+        ...taxo,
+      });
+    },
+    onMutate: ({ draftId }) => setApprovingId(draftId),
+    onSuccess: () => {
+      toast.success('Approved to Question Bank');
+      qc.invalidateQueries({ queryKey: ['questions'] });
+      qc.invalidateQueries({ queryKey: ['ocr-assist-drafts'] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err)),
+    onSettled: () => setApprovingId(null),
   });
 
   // Reactive state callback to parent page
@@ -632,6 +698,8 @@ export const OcrAssistPanel = ({
                   onToggleExpand={() => toggleExpand(d.id)}
                   onDiscard={() => discard(d.id)}
                   onChange={(patch) => updateEdit(d.id, patch)}
+                  onApproveVisual={(payload) => approveVisual.mutate({ draftId: d.id, payload })}
+                  approving={approvingId === d.id}
                   onApply={
                     onApplyDraft
                       ? () =>
@@ -743,6 +811,8 @@ const DraftRow = ({
   onDiscard,
   onChange,
   onApply,
+  onApproveVisual,
+  approving,
 }: {
   draft: OcrDraft;
   edits: DraftEdits;
@@ -754,11 +824,16 @@ const DraftRow = ({
   onDiscard: () => void;
   onChange: (patch: Partial<DraftEdits>) => void;
   onApply?: () => void;
+  onApproveVisual?: (payload: VisualApprovePayload) => void;
+  approving?: boolean;
 }) => {
   const finalized = draft.status === 'APPROVED' || draft.status === 'DISCARDED';
   const conf = draft.confidence ?? null;
   const isChoice =
     edits.detectedType === 'SINGLE_CHOICE' || edits.detectedType === 'MULTIPLE_CHOICE';
+  // Screenshot-first: when the draft carries a cropped question image, the image
+  // IS the question — we render it instead of the OCR text/options.
+  const imageKey = draft.questionSnapshotKey?.trim();
 
   return (
     <li
@@ -789,21 +864,39 @@ const DraftRow = ({
             ) : null}
             {finalized ? <StatusBadge value={draft.status} /> : null}
           </div>
-          <p className="mt-1 line-clamp-2 text-sm text-text">{edits.text}</p>
-          {isChoice && edits.options.length > 0 && !expanded ? (
-            <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-muted">
-              {edits.options.slice(0, 6).map((o, i) => (
-                <li key={i} className={o.isCorrect ? 'text-success' : undefined}>
-                  <span className="font-mono">{String.fromCharCode(65 + i)}.</span>{' '}
-                  {o.label || <em className="text-text-faint">(empty)</em>}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          {imageKey ? (
+            // The cropped screenshot is the question — no OCR text/options shown.
+            !expanded ? (
+              <img
+                src={snapshotUrl(imageKey)}
+                alt={`Question ${draft.position + 1} screenshot`}
+                className="mt-1 max-h-28 rounded border border-border-soft bg-subtle object-contain"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : null
+          ) : (
+            <>
+              <p className="mt-1 line-clamp-2 text-sm text-text">{edits.text}</p>
+              {isChoice && edits.options.length > 0 && !expanded ? (
+                <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-muted">
+                  {edits.options.slice(0, 6).map((o, i) => (
+                    <li key={i} className={o.isCorrect ? 'text-success' : undefined}>
+                      <span className="font-mono">{String.fromCharCode(65 + i)}.</span>{' '}
+                      {o.label || <em className="text-text-faint">(empty)</em>}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          {onApply ? (
+          {/* "Use in form" is a text-editing escape hatch — hidden for visual
+              (screenshot) drafts, which are reviewed + approved inline below. */}
+          {onApply && !imageKey ? (
             applied ? (
               <span
                 className="inline-flex items-center gap-1 rounded-sm border border-success bg-success-soft px-1.5 py-0.5 text-[11px] font-medium text-success"
@@ -826,11 +919,12 @@ const DraftRow = ({
           <button
             type="button"
             onClick={onToggleExpand}
-            className="rounded-sm border border-border-soft px-1.5 py-0.5 text-[11px] text-text-muted hover:bg-hover"
-            title={expanded ? 'Collapse' : 'Edit inline'}
+            disabled={finalized}
+            className="rounded-sm border border-border-soft px-1.5 py-0.5 text-[11px] text-text-muted hover:bg-hover disabled:opacity-40"
+            title={expanded ? 'Collapse' : imageKey ? 'Review + pick answer' : 'Edit inline'}
           >
             {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            {expanded ? 'Collapse' : 'Edit'}
+            {expanded ? 'Collapse' : imageKey ? 'Review' : 'Edit'}
           </button>
           <button
             type="button"
@@ -844,7 +938,17 @@ const DraftRow = ({
         </div>
       </div>
 
-      {expanded ? (
+      {expanded && imageKey ? (
+        // Screenshot-first review: image + answer-mode picker + approve. No OCR
+        // text, no option-text fields.
+        <div className="mt-3">
+          <VisualReviewCard
+            draft={draft}
+            isApproving={approving}
+            onApprove={(payload) => onApproveVisual?.(payload)}
+          />
+        </div>
+      ) : expanded ? (
         <div className="mt-3 space-y-2 rounded-md border border-border-soft bg-subtle p-3">
           <div className="flex items-center gap-2 text-[11px] text-text-muted">
             <span>Type</span>

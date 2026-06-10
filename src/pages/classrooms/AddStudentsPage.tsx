@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -71,10 +71,36 @@ export const AddStudentsPage = () => {
     }
   };
 
+  const columns = React.useMemo(() => [
+    {
+      id: 'select',
+      header: () => (
+        <input
+          type="checkbox"
+          checked={availableStudents.length > 0 && selectedIds.size === availableStudents.length}
+          onChange={toggleAll}
+          className="rounded border-border text-primary focus:ring-primary"
+        />
+      ),
+      cell: (c: any) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.has(c.row.original.id)}
+          onChange={() => toggleSelect(c.row.original.id)}
+          className="rounded border-border text-primary focus:ring-primary"
+        />
+      ),
+    },
+    { header: 'Name', accessorKey: 'name' },
+    { header: 'Email', accessorKey: 'email' },
+    { header: 'Roll no', cell: (c: any) => c.row.original.rollNo ?? '—' },
+  ], [availableStudents.length, selectedIds]);
+
   return (
     <>
       <PageHeader
         title={`Add Students to ${classroom.data?.name ?? 'Classroom'}`}
+        actionsKey={`${selectedIds.size}-${addMutation.isPending}`}
         actions={
           <Button
             variant="primary"
@@ -95,30 +121,7 @@ export const AddStudentsPage = () => {
 
       <div className="mt-4">
         <Table
-          columns={[
-            {
-              id: 'select',
-              header: () => (
-                <input
-                  type="checkbox"
-                  checked={availableStudents.length > 0 && selectedIds.size === availableStudents.length}
-                  onChange={toggleAll}
-                  className="rounded border-border text-primary focus:ring-primary"
-                />
-              ),
-              cell: (c) => (
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(c.row.original.id)}
-                  onChange={() => toggleSelect(c.row.original.id)}
-                  className="rounded border-border text-primary focus:ring-primary"
-                />
-              ),
-            },
-            { header: 'Name', accessorKey: 'name' },
-            { header: 'Email', accessorKey: 'email' },
-            { header: 'Roll no', cell: (c) => c.row.original.rollNo ?? '—' },
-          ]}
+          columns={columns}
           data={availableStudents}
           empty={<>No available students found in this branch.</>}
         />
