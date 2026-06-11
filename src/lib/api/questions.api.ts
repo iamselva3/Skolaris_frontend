@@ -28,6 +28,8 @@ export interface Question {
   subject: string | null;
   /** Denormalized for analytics; auto-populated from Topic.name when topicId is set. */
   topic: string | null;
+  /** Denormalized for analytics; auto-populated from Chapter.name when chapterId is set. */
+  chapter?: string | null;
   difficulty: Difficulty;
   isActive: boolean;
   options: QuestionOption[];

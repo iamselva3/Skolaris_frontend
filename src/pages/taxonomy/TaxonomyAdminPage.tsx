@@ -16,14 +16,14 @@ import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils/cn';
 
 /**
- * SUPER_ADMIN four-column drill-down: Program → Subject → Topic → Chapter.
+ * SUPER_ADMIN four-column drill-down: Program → Subject → Chapter → Topic.
  * Selecting a row in one column loads the children in the next. Inline
  * "+ Add" at the bottom of each column for fast taxonomy authoring.
  */
 export const TaxonomyAdminPage = () => {
   const [programId, setProgramId] = useState<string | null>(null);
   const [subjectId, setSubjectId] = useState<string | null>(null);
-  const [topicId, setTopicId] = useState<string | null>(null);
+  const [chapterId, setChapterId] = useState<string | null>(null);
 
   return (
     <>
@@ -38,7 +38,7 @@ export const TaxonomyAdminPage = () => {
           onSelect={(id) => {
             setProgramId(id);
             setSubjectId(null);
-            setTopicId(null);
+            setChapterId(null);
           }}
         />
         <SubjectsColumn
@@ -46,15 +46,15 @@ export const TaxonomyAdminPage = () => {
           selectedId={subjectId}
           onSelect={(id) => {
             setSubjectId(id);
-            setTopicId(null);
+            setChapterId(null);
           }}
         />
-        <TopicsColumn
+        <ChaptersColumn
           subjectId={subjectId}
-          selectedId={topicId}
-          onSelect={setTopicId}
+          selectedId={chapterId}
+          onSelect={setChapterId}
         />
-        <ChaptersColumn topicId={topicId} />
+        <TopicsColumn chapterId={chapterId} />
       </div>
     </>
   );
@@ -218,9 +218,9 @@ const SubjectsColumn = ({
   );
 };
 
-/* ────────────────────────────────────────────── Topics */
+/* ────────────────────────────────────────────── Chapters (under Subject) */
 
-const TopicsColumn = ({
+const ChaptersColumn = ({
   subjectId,
   selectedId,
   onSelect,
@@ -231,106 +231,18 @@ const TopicsColumn = ({
 }) => {
   const qc = useQueryClient();
   const list = useQuery({
-    queryKey: ['taxonomy', 'topics', subjectId],
-    queryFn: () => topicsApi.list({ subjectId: subjectId ?? undefined }),
+    queryKey: ['taxonomy', 'chapters', subjectId],
+    queryFn: () => chaptersApi.list({ subjectId: subjectId ?? undefined }),
     enabled: !!subjectId,
   });
   const [name, setName] = useState('');
 
   const create = useMutation({
-    mutationFn: () => topicsApi.create({ subjectId: subjectId ?? '', name }),
-    onSuccess: () => {
-      toast.success('Topic added');
-      setName('');
-      qc.invalidateQueries({ queryKey: ['taxonomy', 'topics', subjectId] });
-    },
-    onError: (err) => toast.error(apiErrorMessage(err)),
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => topicsApi.remove(id),
-    onSuccess: () => {
-      toast.success('Topic removed');
-      qc.invalidateQueries({ queryKey: ['taxonomy', 'topics', subjectId] });
-    },
-    onError: (err) => toast.error(apiErrorMessage(err)),
-  });
-
-  return (
-    <Card>
-      <CardHeader>Topics</CardHeader>
-      <CardBody>
-        {!subjectId ? (
-          <p className="px-2 py-1 text-[12px] text-text-muted">Select a subject first.</p>
-        ) : (
-          <>
-            <ul className="mb-3 space-y-0.5">
-              {(list.data ?? []).map((t) => (
-                <li key={t.id} className="group flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => onSelect(t.id)}
-                    className={cn(
-                      'flex-1 px-2 py-1 text-left text-[13px] hover:bg-hover',
-                      selectedId === t.id && 'bg-primary-soft text-primary',
-                    )}
-                  >
-                    {t.name}
-                  </button>
-                  <button
-                    type="button"
-                    title="Delete topic"
-                    onClick={() => remove.mutate(t.id)}
-                    className="px-1 text-text-faint opacity-0 group-hover:opacity-100 hover:text-danger"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </li>
-              ))}
-              {list.data?.length === 0 ? (
-                <li className="px-2 py-1 text-[12px] text-text-muted">No topics yet.</li>
-              ) : null}
-            </ul>
-            <div className="space-y-1.5 border-t border-border-soft pt-2">
-              <Input
-                placeholder="Topic name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="h-7 text-xs"
-              />
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!name || create.isPending}
-                loading={create.isPending}
-                onClick={() => create.mutate()}
-              >
-                <Plus size={12} /> Add topic
-              </Button>
-            </div>
-          </>
-        )}
-      </CardBody>
-    </Card>
-  );
-};
-
-/* ────────────────────────────────────────────── Chapters */
-
-const ChaptersColumn = ({ topicId }: { topicId: string | null }) => {
-  const qc = useQueryClient();
-  const list = useQuery({
-    queryKey: ['taxonomy', 'chapters', topicId],
-    queryFn: () => chaptersApi.list({ topicId: topicId ?? undefined }),
-    enabled: !!topicId,
-  });
-  const [name, setName] = useState('');
-
-  const create = useMutation({
-    mutationFn: () => chaptersApi.create({ topicId: topicId ?? '', name }),
+    mutationFn: () => chaptersApi.create({ subjectId: subjectId ?? '', name }),
     onSuccess: () => {
       toast.success('Chapter added');
       setName('');
-      qc.invalidateQueries({ queryKey: ['taxonomy', 'chapters', topicId] });
+      qc.invalidateQueries({ queryKey: ['taxonomy', 'chapters', subjectId] });
     },
     onError: (err) => toast.error(apiErrorMessage(err)),
   });
@@ -338,7 +250,7 @@ const ChaptersColumn = ({ topicId }: { topicId: string | null }) => {
     mutationFn: (id: string) => chaptersApi.remove(id),
     onSuccess: () => {
       toast.success('Chapter removed');
-      qc.invalidateQueries({ queryKey: ['taxonomy', 'chapters', topicId] });
+      qc.invalidateQueries({ queryKey: ['taxonomy', 'chapters', subjectId] });
     },
     onError: (err) => toast.error(apiErrorMessage(err)),
   });
@@ -347,14 +259,23 @@ const ChaptersColumn = ({ topicId }: { topicId: string | null }) => {
     <Card>
       <CardHeader>Chapters</CardHeader>
       <CardBody>
-        {!topicId ? (
-          <p className="px-2 py-1 text-[12px] text-text-muted">Select a topic first.</p>
+        {!subjectId ? (
+          <p className="px-2 py-1 text-[12px] text-text-muted">Select a subject first.</p>
         ) : (
           <>
             <ul className="mb-3 space-y-0.5">
               {(list.data ?? []).map((c) => (
                 <li key={c.id} className="group flex items-center gap-1">
-                  <span className="flex-1 px-2 py-1 text-[13px]">{c.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(c.id)}
+                    className={cn(
+                      'flex-1 px-2 py-1 text-left text-[13px] hover:bg-hover',
+                      selectedId === c.id && 'bg-primary-soft text-primary',
+                    )}
+                  >
+                    {c.name}
+                  </button>
                   <button
                     type="button"
                     title="Delete chapter"
@@ -384,6 +305,85 @@ const ChaptersColumn = ({ topicId }: { topicId: string | null }) => {
                 onClick={() => create.mutate()}
               >
                 <Plus size={12} /> Add chapter
+              </Button>
+            </div>
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+};
+
+/* ────────────────────────────────────────────── Topics (leaf, under Chapter) */
+
+const TopicsColumn = ({ chapterId }: { chapterId: string | null }) => {
+  const qc = useQueryClient();
+  const list = useQuery({
+    queryKey: ['taxonomy', 'topics', chapterId],
+    queryFn: () => topicsApi.list({ chapterId: chapterId ?? undefined }),
+    enabled: !!chapterId,
+  });
+  const [name, setName] = useState('');
+
+  const create = useMutation({
+    mutationFn: () => topicsApi.create({ chapterId: chapterId ?? '', name }),
+    onSuccess: () => {
+      toast.success('Topic added');
+      setName('');
+      qc.invalidateQueries({ queryKey: ['taxonomy', 'topics', chapterId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err)),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => topicsApi.remove(id),
+    onSuccess: () => {
+      toast.success('Topic removed');
+      qc.invalidateQueries({ queryKey: ['taxonomy', 'topics', chapterId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err)),
+  });
+
+  return (
+    <Card>
+      <CardHeader>Topics</CardHeader>
+      <CardBody>
+        {!chapterId ? (
+          <p className="px-2 py-1 text-[12px] text-text-muted">Select a chapter first.</p>
+        ) : (
+          <>
+            <ul className="mb-3 space-y-0.5">
+              {(list.data ?? []).map((t) => (
+                <li key={t.id} className="group flex items-center gap-1">
+                  <span className="flex-1 px-2 py-1 text-[13px]">{t.name}</span>
+                  <button
+                    type="button"
+                    title="Delete topic"
+                    onClick={() => remove.mutate(t.id)}
+                    className="px-1 text-text-faint opacity-0 group-hover:opacity-100 hover:text-danger"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </li>
+              ))}
+              {list.data?.length === 0 ? (
+                <li className="px-2 py-1 text-[12px] text-text-muted">No topics yet.</li>
+              ) : null}
+            </ul>
+            <div className="space-y-1.5 border-t border-border-soft pt-2">
+              <Input
+                placeholder="Topic name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-7 text-xs"
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!name || create.isPending}
+                loading={create.isPending}
+                onClick={() => create.mutate()}
+              >
+                <Plus size={12} /> Add topic
               </Button>
             </div>
           </>

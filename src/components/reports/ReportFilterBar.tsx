@@ -34,7 +34,7 @@ export const ReportFilterBar = ({
   value,
   onChange,
   fields = ['search', 'date', 'taxonomy'],
-  taxonomyLevels = ['programId', 'subjectId', 'topicId'],
+  taxonomyLevels = ['programId', 'subjectId', 'chapterId'],
   searchPlaceholder = 'Search…',
   className,
 }: Props) => {

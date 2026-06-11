@@ -83,6 +83,8 @@ export const StudentsListPage = () => {
   const subjectOptions = [
     ...new Set(
       classroomList
+        .filter((c) => (batchFilter && !isUnallocated ? c.name === batchFilter : true))
+        .filter((c) => (sectionFilter && !isUnallocated ? c.section === sectionFilter : true))
         .map((c) => c.subject)
         .filter((s): s is string => !!s),
     ),
@@ -91,6 +93,7 @@ export const StudentsListPage = () => {
     ...new Set(
       classroomList
         .filter((c) => (subjectFilter ? c.subject === subjectFilter : true))
+        .filter((c) => (sectionFilter && !isUnallocated ? c.section === sectionFilter : true))
         .map((c) => c.name)
     ),
   ].sort();
@@ -278,7 +281,7 @@ export const StudentsListPage = () => {
             setSectionFilter(e.target.value);
             setOffset(0);
           }}
-          disabled={!batchFilter || isUnallocated || sectionOptions.length === 0}
+          disabled={isUnallocated || sectionOptions.length === 0}
           className="max-w-[140px]"
         >
           <option value="">All sections</option>

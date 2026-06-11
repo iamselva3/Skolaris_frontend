@@ -86,30 +86,31 @@ export const QuestionsListPage = () => {
     staleTime: 10 * 60 * 1000,
   });
 
-  const topicsQuery = useQuery({
-    queryKey: ['taxonomy', 'topics-multi', Array.from(selectedSubjects)],
+  // Chapters are children of Subjects; Topics are the leaf, children of Chapters.
+  const chaptersQuery = useQuery({
+    queryKey: ['taxonomy', 'chapters-multi', Array.from(selectedSubjects)],
     queryFn: async () => {
       const ids = Array.from(selectedSubjects);
       if (ids.length === 0) {
-        return topicsApi.list();
+        return chaptersApi.list();
       }
       const responses = await Promise.all(
-        ids.map((id) => topicsApi.list({ subjectId: id }))
+        ids.map((id) => chaptersApi.list({ subjectId: id }))
       );
       return responses.flat();
     },
     staleTime: 10 * 60 * 1000,
   });
 
-  const chaptersQuery = useQuery({
-    queryKey: ['taxonomy', 'chapters-multi', Array.from(selectedTopics)],
+  const topicsQuery = useQuery({
+    queryKey: ['taxonomy', 'topics-multi', Array.from(selectedChapters)],
     queryFn: async () => {
-      const ids = Array.from(selectedTopics);
+      const ids = Array.from(selectedChapters);
       if (ids.length === 0) {
-        return chaptersApi.list();
+        return topicsApi.list();
       }
       const responses = await Promise.all(
-        ids.map((id) => chaptersApi.list({ topicId: id }))
+        ids.map((id) => topicsApi.list({ chapterId: id }))
       );
       return responses.flat();
     },
@@ -127,14 +128,14 @@ export const QuestionsListPage = () => {
 
   const handleSubjectsChange = (next: Set<string>) => {
     setSelectedSubjects(next);
-    setSelectedTopics(new Set());
     setSelectedChapters(new Set());
+    setSelectedTopics(new Set());
     setOffset(0);
   };
 
-  const handleTopicsChange = (next: Set<string>) => {
-    setSelectedTopics(next);
-    setSelectedChapters(new Set());
+  const handleChaptersChange = (next: Set<string>) => {
+    setSelectedChapters(next);
+    setSelectedTopics(new Set());
     setOffset(0);
   };
 
@@ -317,30 +318,32 @@ export const QuestionsListPage = () => {
         ),
       },
       {
-        header: 'Subject · Topic',
-        cell: (c) => {
-          const subj = c.row.original.subject ?? '—';
-          const top = c.row.original.topic ?? '—';
-          return (
-            <span className="truncate">
-              <span className="text-text">{subj}</span>
-              <span className="mx-1 text-text-faint">·</span>
-              <span className="text-text-muted">{top}</span>
-            </span>
-          );
-        },
-      },
-      {
-        header: 'Diff',
-        cell: (c) => <DifficultyChip value={c.row.original.difficulty} />,
-      },
-      {
-        header: 'Opts',
+        header: 'Subject',
         cell: (c) => (
-          <span className="font-mono text-xs tabular-nums text-text-muted">
-            {c.row.original.options.length > 0 ? c.row.original.options.length : '—'}
+          <span className="truncate text-text">
+            {c.row.original.subject ?? '—'}
           </span>
         ),
+      },
+      {
+        header: 'Chapter',
+        cell: (c) => (
+          <span className="truncate text-text-muted">
+            {c.row.original.chapter ?? '—'}
+          </span>
+        ),
+      },
+      {
+        header: 'Topic',
+        cell: (c) => (
+          <span className="truncate text-text-muted">
+            {c.row.original.topic ?? '—'}
+          </span>
+        ),
+      },
+      {
+        header: 'Difficulty',
+        cell: (c) => <DifficultyChip value={c.row.original.difficulty} />,
       },
       {
         header: 'Status',
@@ -355,12 +358,12 @@ export const QuestionsListPage = () => {
             </span>
           ),
       },
-      {
-        header: 'Updated',
-        cell: (c) => (
-          <span className="text-xs text-text-muted">{fromNow(c.row.original.updatedAt)}</span>
-        ),
-      },
+      // {
+      //   header: 'Updated',
+      //   cell: (c) => (
+      //     <span className="text-xs text-text-muted">{fromNow(c.row.original.updatedAt)}</span>
+      //   ),
+      // },
       {
         id: 'actions',
         header: '',
@@ -516,19 +519,19 @@ export const QuestionsListPage = () => {
           />
 
           <MultiSelectDropdown
-            label="Topic"
-            options={(topicsQuery.data ?? []).map((t) => ({ id: t.id, name: t.name }))}
-            selected={selectedTopics}
-            onChange={handleTopicsChange}
-            disabled={topicsQuery.isLoading}
-          />
-
-          <MultiSelectDropdown
             label="Chapter"
             options={(chaptersQuery.data ?? []).map((c) => ({ id: c.id, name: c.name }))}
             selected={selectedChapters}
-            onChange={setSelectedChapters}
+            onChange={handleChaptersChange}
             disabled={chaptersQuery.isLoading}
+          />
+
+          <MultiSelectDropdown
+            label="Topic"
+            options={(topicsQuery.data ?? []).map((t) => ({ id: t.id, name: t.name }))}
+            selected={selectedTopics}
+            onChange={setSelectedTopics}
+            disabled={topicsQuery.isLoading}
           />
         </div>
       </section>
@@ -834,7 +837,7 @@ const DifficultyChip = ({ value }: { value: Difficulty }) => {
         tone,
       )}
     >
-      {value[0]}
+      {value}
     </span>
   );
 };

@@ -66,7 +66,7 @@ const serverAnswerMeta = (d: OcrDraft): AnswerMeta => {
 /**
  * Taxonomy completeness — INDEPENDENT of approval/answer/review status. A draft
  * is "taxonomy complete" only when all mandatory taxonomy fields (Program,
- * Subject, Topic, Chapter) are assigned. This is what drives the Bulk Taxonomy
+ * Subject, Chapter, Topic) are assigned. This is what drives the Bulk Taxonomy
  * pending count, NOT the draft's review status — an approved question with no
  * taxonomy is still taxonomy-pending. Mirrors the approve-modal's isValidTaxonomy.
  */
@@ -1193,7 +1193,7 @@ const DraftCard = ({
   const hasCorrect = isChoice
     ? options.some((o) => o.isCorrect)
     : type === 'TRUE_FALSE' || type === 'FILL_BLANK' || type === 'DESCRIPTIVE';
-  // Approval requires complete taxonomy (Program/Subject/Topic/Chapter) — same
+  // Approval requires complete taxonomy (Program/Subject/Chapter/Topic) — same
   // rule the backend now enforces. Until then the card only SAVES the answer and
   // the draft stays in review, waiting for per-question or Bulk Taxonomy.
   const taxonomyComplete = Boolean(
@@ -1256,7 +1256,7 @@ const DraftCard = ({
             </div>
 
             {/* Final review actions — Approve is the TERMINAL step and requires both
-            a saved answer and complete taxonomy (Program/Subject/Topic/Chapter);
+            a saved answer and complete taxonomy (Program/Subject/Chapter/Topic);
             when taxonomy is missing it is blocked with a validation message. */}
             <div className="flex items-center justify-between gap-2 border-t border-border-soft pt-3">
               <Button variant="destructive" size="sm" onClick={() => discard.mutate()}>
@@ -1270,7 +1270,7 @@ const DraftCard = ({
                 onClick={() => {
                   if (!taxonomyComplete) {
                     toast.error(
-                      'Assign Program, Subject, Topic & Chapter — on this question or via Bulk Taxonomy — before approving.',
+                      'Assign Program, Subject, Chapter & Topic — on this question or via Bulk Taxonomy — before approving.',
                     );
                     return;
                   }
@@ -1281,7 +1281,7 @@ const DraftCard = ({
                 title={
                   taxonomyComplete
                     ? 'Approve this question'
-                    : 'Requires a saved answer and complete taxonomy (Program, Subject, Topic, Chapter)'
+                    : 'Requires a saved answer and complete taxonomy (Program, Subject, Chapter, Topic)'
                 }
               >
                 Approve →
@@ -1385,7 +1385,7 @@ const DraftCard = ({
             </div>
 
             {/* Final review actions. Approve is the TERMINAL step and requires both a
-            saved answer and complete taxonomy (Program/Subject/Topic/Chapter); when
+            saved answer and complete taxonomy (Program/Subject/Chapter/Topic); when
             taxonomy is missing it is blocked with a validation message. */}
             <div className="mt-3 flex items-center justify-between gap-2 border-t border-border-soft pt-3">
               <Button variant="destructive" size="sm" onClick={() => discard.mutate()}>
@@ -1410,7 +1410,7 @@ const DraftCard = ({
                   onClick={() => {
                     if (!taxonomyComplete) {
                       toast.error(
-                        'Assign Program, Subject, Topic & Chapter — on this question or via Bulk Taxonomy — before approving.',
+                        'Assign Program, Subject, Chapter & Topic — on this question or via Bulk Taxonomy — before approving.',
                       );
                       return;
                     }
@@ -1419,7 +1419,7 @@ const DraftCard = ({
                   title={
                     taxonomyComplete
                       ? 'Approve this question'
-                      : 'Requires a saved answer and complete taxonomy (Program, Subject, Topic, Chapter)'
+                      : 'Requires a saved answer and complete taxonomy (Program, Subject, Chapter, Topic)'
                   }
                 >
                   Approve →

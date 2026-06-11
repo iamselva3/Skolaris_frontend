@@ -17,12 +17,12 @@ import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 
-export type TaxonomyLevel = 'programId' | 'subjectId' | 'topicId' | 'chapterId';
+export type TaxonomyLevel = 'programId' | 'subjectId' | 'chapterId' | 'topicId';
 
 interface Props {
   value: TaxonomySelection;
   onChange: (next: TaxonomySelection) => void;
-  /** Which levels to render. Default ['programId','subjectId','topicId','chapterId']. */
+  /** Which levels to render. Default ['programId','subjectId','chapterId','topicId']. */
   levels?: TaxonomyLevel[];
   size?: 'sm' | 'md';
   /** 'horizontal' (default) = side-by-side grid; 'vertical' = stacked column. */
@@ -32,10 +32,10 @@ interface Props {
 }
 
 /**
- * Horizontal CourseSelector — four cascading selects (Program → Subject → Topic
- * → Chapter). Used wherever the user is filtering or tagging by the coaching
- * taxonomy. Each select disables until its parent is set; changing a parent
- * clears the descendants in onChange.
+ * Horizontal CourseSelector — four cascading selects (Program → Subject →
+ * Chapter → Topic). Used wherever the user is filtering or tagging by the
+ * coaching taxonomy. Each select disables until its parent is set; changing a
+ * parent clears the descendants in onChange.
  *
  * Data fetches are gated by `enabled: !!parentId` and cached for 10 min (taxonomy
  * changes infrequently).
@@ -43,7 +43,7 @@ interface Props {
 export const CourseSelector = ({
   value,
   onChange,
-  levels = ['programId', 'subjectId', 'topicId', 'chapterId'],
+  levels = ['programId', 'subjectId', 'chapterId', 'topicId'],
   size = 'md',
   direction = 'horizontal',
   className,
@@ -73,18 +73,18 @@ export const CourseSelector = ({
     enabled: showSubject && !!value.programId,
   });
 
-  const topics = useQuery({
-    queryKey: ['taxonomy', 'topics', value.subjectId],
-    queryFn: () => topicsApi.list({ subjectId: value.subjectId ?? undefined }),
+  const chapters = useQuery({
+    queryKey: ['taxonomy', 'chapters', value.subjectId],
+    queryFn: () => chaptersApi.list({ subjectId: value.subjectId ?? undefined }),
     staleTime: 10 * 60 * 1000,
-    enabled: showTopic && !!value.subjectId,
+    enabled: showChapter && !!value.subjectId,
   });
 
-  const chapters = useQuery({
-    queryKey: ['taxonomy', 'chapters', value.topicId],
-    queryFn: () => chaptersApi.list({ topicId: value.topicId ?? undefined }),
+  const topics = useQuery({
+    queryKey: ['taxonomy', 'topics', value.chapterId],
+    queryFn: () => topicsApi.list({ chapterId: value.chapterId ?? undefined }),
     staleTime: 10 * 60 * 1000,
-    enabled: showChapter && !!value.topicId,
+    enabled: showTopic && !!value.chapterId,
   });
 
   // Clear descendants if the value contains an ID that no longer exists in the
@@ -104,13 +104,13 @@ export const CourseSelector = ({
     }
 
     if (level === 'programId') {
-      onChange({ programId: id, subjectId: null, topicId: null, chapterId: null });
+      onChange({ programId: id, subjectId: null, chapterId: null, topicId: null });
     } else if (level === 'subjectId') {
-      onChange({ ...value, subjectId: id, topicId: null, chapterId: null });
-    } else if (level === 'topicId') {
-      onChange({ ...value, topicId: id, chapterId: null });
+      onChange({ ...value, subjectId: id, chapterId: null, topicId: null });
+    } else if (level === 'chapterId') {
+      onChange({ ...value, chapterId: id, topicId: null });
     } else {
-      onChange({ ...value, chapterId: id });
+      onChange({ ...value, topicId: id });
     }
   };
 
@@ -134,17 +134,17 @@ export const CourseSelector = ({
         const res = await subjectsApi.create({ programId: value.programId!, name });
         newId = res.id;
         qc.invalidateQueries({ queryKey: ['taxonomy', 'subjects', value.programId] });
-        onChange({ ...value, subjectId: newId, topicId: null, chapterId: null });
-      } else if (level === 'topicId') {
-        const res = await topicsApi.create({ subjectId: value.subjectId!, name });
-        newId = res.id;
-        qc.invalidateQueries({ queryKey: ['taxonomy', 'topics', value.subjectId] });
-        onChange({ ...value, topicId: newId, chapterId: null });
+        onChange({ ...value, subjectId: newId, chapterId: null, topicId: null });
       } else if (level === 'chapterId') {
-        const res = await chaptersApi.create({ topicId: value.topicId!, name });
+        const res = await chaptersApi.create({ subjectId: value.subjectId!, name });
         newId = res.id;
-        qc.invalidateQueries({ queryKey: ['taxonomy', 'chapters', value.topicId] });
-        onChange({ ...value, chapterId: newId });
+        qc.invalidateQueries({ queryKey: ['taxonomy', 'chapters', value.subjectId] });
+        onChange({ ...value, chapterId: newId, topicId: null });
+      } else if (level === 'topicId') {
+        const res = await topicsApi.create({ chapterId: value.chapterId!, name });
+        newId = res.id;
+        qc.invalidateQueries({ queryKey: ['taxonomy', 'topics', value.chapterId] });
+        onChange({ ...value, topicId: newId });
       }
       toast.success(`${level.replace('Id', '')} created successfully`);
       setAddModal(null);
@@ -203,37 +203,37 @@ export const CourseSelector = ({
         </select>
       ) : null}
 
-      {showTopic ? (
-        <select
-          className={selectCls}
-          value={value.topicId ?? ''}
-          disabled={disabled || !value.subjectId || topics.isLoading}
-          onChange={(e) => handle('topicId', e.target.value || null)}
-        >
-          <option value="">{value.subjectId ? 'Topic ▾' : '— select subject —'}</option>
-          {(topics.data ?? []).map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-          {value.subjectId && <option value="__add_new__">+ Add Topic...</option>}
-        </select>
-      ) : null}
-
       {showChapter ? (
         <select
           className={selectCls}
           value={value.chapterId ?? ''}
-          disabled={disabled || !value.topicId || chapters.isLoading}
+          disabled={disabled || !value.subjectId || chapters.isLoading}
           onChange={(e) => handle('chapterId', e.target.value || null)}
         >
-          <option value="">{value.topicId ? 'Chapter ▾' : '— select topic —'}</option>
+          <option value="">{value.subjectId ? 'Chapter ▾' : '— select subject —'}</option>
           {(chapters.data ?? []).map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
-          {value.topicId && <option value="__add_new__">+ Add Chapter...</option>}
+          {value.subjectId && <option value="__add_new__">+ Add Chapter...</option>}
+        </select>
+      ) : null}
+
+      {showTopic ? (
+        <select
+          className={selectCls}
+          value={value.topicId ?? ''}
+          disabled={disabled || !value.chapterId || topics.isLoading}
+          onChange={(e) => handle('topicId', e.target.value || null)}
+        >
+          <option value="">{value.chapterId ? 'Topic ▾' : '— select chapter —'}</option>
+          {(topics.data ?? []).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+          {value.chapterId && <option value="__add_new__">+ Add Topic...</option>}
         </select>
       ) : null}
 

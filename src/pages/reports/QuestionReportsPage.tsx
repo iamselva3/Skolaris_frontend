@@ -142,7 +142,7 @@ export const QuestionReportsPage = () => {
             setOffset(0);
           }}
           fields={['search', 'taxonomy', 'branch']}
-          taxonomyLevels={['programId', 'subjectId', 'topicId', 'chapterId']}
+          taxonomyLevels={['programId', 'subjectId', 'chapterId', 'topicId']}
           searchPlaceholder="Search subject or topic"
         />
       }

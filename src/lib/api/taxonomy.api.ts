@@ -22,7 +22,9 @@ export interface Subject {
   updatedAt: string;
 }
 
-export interface Topic {
+// Hierarchy: Program → Subject → Chapter → Topic.
+// Chapter is the mid-level (child of Subject); Topic is the leaf (child of Chapter).
+export interface Chapter {
   id: string;
   subjectId: string;
   name: string;
@@ -31,9 +33,9 @@ export interface Topic {
   updatedAt: string;
 }
 
-export interface Chapter {
+export interface Topic {
   id: string;
-  topicId: string;
+  chapterId: string;
   name: string;
   position: number;
   createdAt: string;
@@ -97,7 +99,7 @@ export const subjectsApi = {
 /* ────────────────────────── Topics ────────────────────────── */
 
 export const topicsApi = {
-  list: async (params: { subjectId?: string } = {}): Promise<Topic[]> => {
+  list: async (params: { chapterId?: string } = {}): Promise<Topic[]> => {
     const r = await apiClient.get<ApiEnvelope<Topic[]>>('/topics', { params });
     return r.data.data;
   },
@@ -105,7 +107,7 @@ export const topicsApi = {
     const r = await apiClient.get<ApiEnvelope<Topic>>(`/topics/${id}`);
     return r.data.data;
   },
-  create: async (body: { subjectId: string; name: string; position?: number }): Promise<Topic> => {
+  create: async (body: { chapterId: string; name: string; position?: number }): Promise<Topic> => {
     const r = await apiClient.post<ApiEnvelope<Topic>>('/topics', body);
     return r.data.data;
   },
@@ -121,7 +123,7 @@ export const topicsApi = {
 /* ────────────────────────── Chapters ────────────────────────── */
 
 export const chaptersApi = {
-  list: async (params: { topicId?: string } = {}): Promise<Chapter[]> => {
+  list: async (params: { subjectId?: string } = {}): Promise<Chapter[]> => {
     const r = await apiClient.get<ApiEnvelope<Chapter[]>>('/chapters', { params });
     return r.data.data;
   },
@@ -129,7 +131,7 @@ export const chaptersApi = {
     const r = await apiClient.get<ApiEnvelope<Chapter>>(`/chapters/${id}`);
     return r.data.data;
   },
-  create: async (body: { topicId: string; name: string; position?: number }): Promise<Chapter> => {
+  create: async (body: { subjectId: string; name: string; position?: number }): Promise<Chapter> => {
     const r = await apiClient.post<ApiEnvelope<Chapter>>('/chapters', body);
     return r.data.data;
   },
