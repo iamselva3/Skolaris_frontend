@@ -154,12 +154,13 @@ export const VisualReviewCard = ({
     setMode(m);
     setTouched(true);
   };
+  // Toggle: clicking the already-selected option clears it (back to unanswered).
   const pickOption = (n: number): void => {
-    setCorrectOption(n);
+    setCorrectOption((cur) => (cur === n ? 0 : n));
     setTouched(true);
   };
   const pickBool = (val: boolean): void => {
-    setCorrectBool(val);
+    setCorrectBool((cur) => (cur === val ? null : val));
     setTouched(true);
   };
 
@@ -334,24 +335,23 @@ export const VisualReviewCard = ({
             <span className="text-xs text-text-muted">Correct</span>
             <div className="flex flex-wrap gap-1.5">
               {Array.from({ length: optionCount }, (_, i) => i + 1).map((n) => (
-                <label
+                <button
                   key={n}
+                  type="button"
+                  // Click toggles: selecting answers the question; clicking the
+                  // SAME option again clears it (unanswered).
+                  onClick={() => pickOption(n)}
+                  aria-pressed={correctOption === n}
+                  title={correctOption === n ? 'Click again to unselect' : `Mark option ${n} correct`}
                   className={
-                    'inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded border text-sm font-medium transition-colors ' +
+                    'inline-flex h-8 w-8 items-center justify-center rounded border text-sm font-medium transition-colors ' +
                     (correctOption === n
                       ? 'border-success bg-success-soft text-success'
                       : 'border-border bg-surface text-text-muted hover:bg-hover')
                   }
                 >
-                  <input
-                    type="radio"
-                    name={`visual-correct-${draft.id}`}
-                    className="sr-only"
-                    checked={correctOption === n}
-                    onChange={() => pickOption(n)}
-                  />
                   {n}
-                </label>
+                </button>
               ))}
             </div>
           </div>
@@ -363,24 +363,21 @@ export const VisualReviewCard = ({
             [true, 'True'],
             [false, 'False'],
           ] as Array<[boolean, string]>).map(([val, label]) => (
-            <label
+            <button
               key={label}
+              type="button"
+              onClick={() => pickBool(val)}
+              aria-pressed={correctBool === val}
+              title={correctBool === val ? 'Click again to unselect' : `Mark ${label} correct`}
               className={
-                'inline-flex h-8 cursor-pointer items-center rounded border px-3 text-sm font-medium transition-colors ' +
+                'inline-flex h-8 items-center rounded border px-3 text-sm font-medium transition-colors ' +
                 (correctBool === val
                   ? 'border-success bg-success-soft text-success'
                   : 'border-border bg-surface text-text-muted hover:bg-hover')
               }
             >
-              <input
-                type="radio"
-                name={`visual-tf-${draft.id}`}
-                className="sr-only"
-                checked={correctBool === val}
-                onChange={() => pickBool(val)}
-              />
               {label}
-            </label>
+            </button>
           ))}
         </div>
       ) : (

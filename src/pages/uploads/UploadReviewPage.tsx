@@ -10,6 +10,8 @@ import {
   type OcrBatchDraft,
   type AssignTaxonomyBody,
   type ImportAnswerKeyResult,
+  type ParseReport,
+  type PreviewAnswerKeyResult,
 } from '@/lib/api/ocr.api';
 import type { Difficulty, QuestionType } from '@/lib/types';
 import { apiErrorMessage } from '@/lib/api/client';
@@ -258,23 +260,40 @@ export const UploadReviewPage = () => {
   // persistence as the review card (updateDraft + optimistic cache patch) so the
   // two views stay in sync; existing option LABELS are preserved (only isCorrect
   // moves). Approval/taxonomy/counts are untouched — this only saves the answer.
+  // Drafts the teacher explicitly toggled OFF this session — so a cleared answer
+  // shows as unanswered even when an answer-key suggestion would otherwise fill it.
+  const [clearedDraftIds, setClearedDraftIds] = useState<Set<string>>(() => new Set());
+
   const saveManualAnswer = useCallback(
     (d: OcrDraft, n: number) => {
       if (d.status === 'APPROVED' || d.status === 'DISCARDED') return;
+      // Effective current pick (a cleared draft reads as unanswered). Clicking the
+      // SAME option again toggles it off → unanswered; any other option selects it.
+      const current = clearedDraftIds.has(d.id) ? 0 : selectedOptionFor(d);
+      const deselect = current === n;
       const base = d.options ?? [];
       const count = Math.max(n, base.length, Math.min(6, Math.max(2, d.optionCount ?? 4)));
       const opts = Array.from({ length: count }, (_, i) => ({
         label: base[i]?.label ?? String(i + 1),
-        isCorrect: i + 1 === n,
+        isCorrect: !deselect && i + 1 === n,
       }));
+      setClearedDraftIds((cur) => {
+        const next = new Set(cur);
+        if (deselect) next.add(d.id);
+        else next.delete(d.id);
+        return next;
+      });
       patchDraftCache(d.id, { options: opts }); // optimistic — view updates instantly
       ocrApi
         .updateDraft(d.id, { options: opts })
         .then((saved) => patchDraftCache(saved.id, saved))
         .catch((err) => toast.error(apiErrorMessage(err)));
-      handleAnswerChange(d.id, { mapped: true, label: indexToLabel(n), source: 'manual' });
+      handleAnswerChange(
+        d.id,
+        deselect ? { mapped: false } : { mapped: true, label: indexToLabel(n), source: 'manual' },
+      );
     },
-    [patchDraftCache, handleAnswerChange],
+    [patchDraftCache, handleAnswerChange, clearedDraftIds],
   );
 
   // Bulk taxonomy across a batch: taxonomy is denormalized per draft, so group the
@@ -303,25 +322,49 @@ export const UploadReviewPage = () => {
   // Answer-key across a batch: the parsed key is continuous (1..N = batchSequence).
   // Translate each entry back to its file's ORIGINAL question number and apply per
   // job. Image keys can't be split per file, so they're rejected in batch mode.
-  const applyKeyBatch = useCallback(
-    async (input: { text?: string; storageKey?: string }): Promise<ImportAnswerKeyResult> => {
-      if (input.storageKey || !input.text) {
-        throw new Error(
-          'Image/PDF answer keys aren’t supported for multi-file batches — use a text, CSV or Excel key.',
-        );
-      }
+  // Parse the (continuous-numbered) batch key with the ONE canonical backend
+  // grammar, then translate each entry back to its file's ORIGINAL question
+  // number. Reconstructs "orig-answer" lines the per-job apply endpoint re-parses.
+  const translateBatchKey = useCallback(
+    async (
+      text: string,
+    ): Promise<{ report: ParseReport; perJob: Map<string, string[]>; willMatch: number }> => {
+      const report = await ocrApi.parseAnswerKey(text);
       const bySeq = new Map<number, OcrBatchDraft>();
       for (const r of batchRows) bySeq.set(r.batchSequence, r);
       const perJob = new Map<string, string[]>();
-      for (const line of input.text.split(/\r?\n/)) {
-        const m = line.match(/^\s*(\d+)\s*-\s*(\d+)\s*$/);
-        if (!m) continue;
-        const row = bySeq.get(Number(m[1]));
+      let willMatch = 0;
+      for (const e of report.entries) {
+        const row = bySeq.get(e.questionNumber);
         if (!row || row.originalQuestionNumber == null) continue;
+        willMatch += 1;
+        const tok = e.answer.kind === 'boolean' ? (e.answer.value ? 'TRUE' : 'FALSE') : String(e.answer.index);
         const arr = perJob.get(row.ocrJobId) ?? [];
-        arr.push(`${row.originalQuestionNumber}-${Number(m[2])}`);
+        arr.push(`${row.originalQuestionNumber}-${tok}`);
         perJob.set(row.ocrJobId, arr);
       }
+      return { report, perJob, willMatch };
+    },
+    [batchRows],
+  );
+
+  const previewKeyBatch = useCallback(
+    async (input: { text?: string; storageKey?: string }): Promise<PreviewAnswerKeyResult> => {
+      if (input.storageKey || !input.text) {
+        throw new Error('Image/PDF answer keys aren’t supported for multi-file batches — use text, CSV or Excel.');
+      }
+      const { report, willMatch } = await translateBatchKey(input.text);
+      return { report, willMatch, draftCount: batchRows.length };
+    },
+    [batchRows, translateBatchKey],
+  );
+
+  const applyKeyBatch = useCallback(
+    async (input: { text?: string; storageKey?: string }): Promise<ImportAnswerKeyResult> => {
+      if (input.storageKey || !input.text) {
+        throw new Error('Image/PDF answer keys aren’t supported for multi-file batches — use text, CSV or Excel.');
+      }
+      const { report, perJob } = await translateBatchKey(input.text);
       const agg: ImportAnswerKeyResult = {
         matched: 0,
         keyEntries: 0,
@@ -329,6 +372,7 @@ export const UploadReviewPage = () => {
         unmatchedDrafts: 0,
         conflicts: [],
         outOfRange: [],
+        report,
       };
       for (const [job, lines] of perJob) {
         const r = await ocrApi.importAnswerKey(job, { text: lines.join('\n') });
@@ -341,7 +385,7 @@ export const UploadReviewPage = () => {
       }
       return agg;
     },
-    [batchRows],
+    [translateBatchKey],
   );
 
   // Phase 2 — Live OCR progress. Polls /ocr/progress/:uploadId at 1s while
@@ -597,7 +641,7 @@ export const UploadReviewPage = () => {
           {draftList.length > 0 ? (
             <div className="space-y-2">
               {manualMode ? (
-                <ManualEntryGrid drafts={draftList} onPick={saveManualAnswer} onViewChange={() => setManualMode(false)} />
+                <ManualEntryGrid drafts={draftList} clearedIds={clearedDraftIds} onPick={saveManualAnswer} onViewChange={() => setManualMode(false)} />
               ) : (
                 <QuestionNavigator
                   drafts={draftList}
@@ -677,6 +721,7 @@ export const UploadReviewPage = () => {
           open={answerKeyOpen}
           jobId={batchMode ? undefined : jobId}
           applyKey={batchMode ? applyKeyBatch : undefined}
+          previewKey={batchMode ? previewKeyBatch : undefined}
           draftCount={draftList.length}
           draftNumbers={draftList
             .map((d) => d.questionNumber ?? null)
@@ -769,10 +814,14 @@ const FilePreview = ({
  */
 const ManualEntryGrid = ({
   drafts,
+  clearedIds,
   onPick,
   onViewChange,
 }: {
   drafts: OcrDraft[];
+  /** Draft ids the teacher explicitly cleared this session (toggled the selected
+   *  option off) — shown as unanswered even if an answer-key suggestion exists. */
+  clearedIds: Set<string>;
   onPick: (d: OcrDraft, n: number) => void;
   onViewChange?: () => void;
 }) => {
@@ -810,7 +859,7 @@ const ManualEntryGrid = ({
         <div className="flex max-h-[calc(100vh-12rem)] flex-col gap-0.5 overflow-y-auto">
         {rows.map((d) => {
           const count = Math.min(6, Math.max(2, d.options?.length || d.optionCount || 4));
-          const selected = selectedOptionFor(d);
+          const selected = clearedIds.has(d.id) ? 0 : selectedOptionFor(d);
           const approved = d.status === 'APPROVED';
           return (
             <div key={d.id} className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-hover">
@@ -1044,10 +1093,13 @@ const DraftCard = ({
   // and Descriptive carry no draft options to persist, so they hold for the
   // session only.) Silent — it fires on every selection.
   const persistVisualAnswer = (p: VisualApprovePayload) => {
-    if (p.mode !== 'MCQ' || p.correctOption <= 0) return;
+    if (p.mode !== 'MCQ') return;
+    // correctOption 0 = the teacher toggled the selected option off → persist
+    // options with NO isCorrect flag so the draft reverts to UNANSWERED (and the
+    // cleared state survives navigation), instead of leaving the old pick saved.
     const opts = Array.from({ length: p.optionCount }, (_, i) => ({
       label: String(i + 1),
-      isCorrect: i + 1 === p.correctOption,
+      isCorrect: p.correctOption > 0 && i + 1 === p.correctOption,
     }));
     onLocalPatch(draft.id, { options: opts }); // optimistic — survives navigation now
     ocrApi
@@ -1203,10 +1255,10 @@ const DraftCard = ({
   return (
     <Card className={cn(selected && 'ring-1 ring-primary')}>
       <div className="flex items-center justify-between border-b border-border-soft px-3 py-1.5 text-[11px]">
-        <label className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <input
             type="checkbox"
-            className="form-checkbox"
+            className="hidden"
             checked={selected}
             onChange={onToggleSelect}
             title="Select for bulk taxonomy"
@@ -1226,7 +1278,7 @@ const DraftCard = ({
               'no confidence'
             )}
           </span>
-        </label>
+        </div>
         <StatusBadge value={draft.status} />
       </div>
       <CardBody>

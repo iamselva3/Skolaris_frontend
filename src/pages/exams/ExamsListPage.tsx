@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { examsApi, type Exam } from '@/lib/api/exams.api';
 import type { ExamStatus } from '@/lib/types';
 import { apiErrorMessage } from '@/lib/api/client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Input } from '@/components/ui/Input';
 import { Pagination } from '@/components/ui/Pagination';
 import { Select } from '@/components/ui/Select';
@@ -16,14 +17,18 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Table } from '@/components/ui/Table';
 import { formatDateTime } from '@/lib/utils/format';
 import { useDebounce } from '@/lib/hooks/use-debounce';
+import { useCurrentUser } from '@/lib/hooks/use-current-user';
 
 export const ExamsListPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user } = useCurrentUser();
+  const canDelete = user?.role === 'SUPER_ADMIN' || user?.role === 'TEACHER';
   const [status, setStatus] = useState<'' | ExamStatus>('');
   const [search, setSearch] = useState('');
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(20);
+  const [confirmDelete, setConfirmDelete] = useState<Exam | null>(null);
   const debounced = useDebounce(search, 300);
 
   const list = useQuery({
@@ -50,6 +55,19 @@ export const ExamsListPage = () => {
     onError: (err) => toast.error(apiErrorMessage(err)),
   });
 
+  const removeExam = useMutation({
+    mutationFn: (id: string) => examsApi.remove(id),
+    onSuccess: () => {
+      toast.success('Exam deleted');
+      setConfirmDelete(null);
+      qc.invalidateQueries({ queryKey: ['exams'] });
+    },
+    onError: (err) => {
+      toast.error(apiErrorMessage(err));
+      setConfirmDelete(null);
+    },
+  });
+
   const columns: ColumnDef<Exam>[] = [
     {
       header: 'Title',
@@ -65,6 +83,26 @@ export const ExamsListPage = () => {
     { header: 'Total marks', accessorKey: 'totalMarks' },
     { header: 'Opens at', cell: (c) => c.row.original.opensAt ? formatDateTime(c.row.original.opensAt) : '—' },
     { header: 'Closes at', cell: (c) => c.row.original.closesAt ? formatDateTime(c.row.original.closesAt) : '—' },
+    ...(canDelete
+      ? [
+          {
+            header: '',
+            id: 'actions',
+            cell: (c) => (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  title="Delete exam"
+                  onClick={() => setConfirmDelete(c.row.original)}
+                  className="rounded p-1 text-text-faint hover:bg-hover hover:text-danger"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ),
+          } as ColumnDef<Exam>,
+        ]
+      : []),
   ];
 
   return (
@@ -116,6 +154,21 @@ export const ExamsListPage = () => {
           }}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Delete exam?"
+        message={
+          confirmDelete
+            ? `"${confirmDelete.title}" and its questions, assignments, and attempts will be permanently removed. This cannot be undone.`
+            : ''
+        }
+        variant="destructive"
+        confirmLabel="Delete"
+        loading={removeExam.isPending}
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && removeExam.mutate(confirmDelete.id)}
+      />
     </>
   );
 };

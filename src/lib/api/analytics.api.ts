@@ -22,7 +22,24 @@ export interface WeakTopic {
   subject: string;
   topic: string;
   scorePercent: number;
+  attemptsCount?: number;
+  correctCount?: number;
   recommendation: string;
+}
+
+export interface MySummary {
+  attemptsTotal: number;
+  avgScore: number; // accuracy %, 0-100
+  weakTopicsCount: number;
+}
+
+export interface SubjectPerformance {
+  subject: string;
+  scorePercent: number;
+  attemptsCount: number;
+  correctCount: number;
+  topicsCount: number;
+  weakCount: number;
 }
 
 export const analyticsApi = {
@@ -36,6 +53,14 @@ export const analyticsApi = {
   },
   myWeakTopics: async (): Promise<WeakTopic[]> => {
     const r = await apiClient.get<ApiEnvelope<WeakTopic[]>>('/me/reports/weak-topics');
+    return r.data.data;
+  },
+  mySummary: async (): Promise<MySummary> => {
+    const r = await apiClient.get<ApiEnvelope<MySummary>>('/me/reports/summary');
+    return r.data.data;
+  },
+  mySubjects: async (): Promise<SubjectPerformance[]> => {
+    const r = await apiClient.get<ApiEnvelope<SubjectPerformance[]>>('/me/reports/subjects');
     return r.data.data;
   },
 };

@@ -117,6 +117,38 @@ export interface ImportAnswerKeyBody {
   storageKey?: string;
 }
 
+/** Canonical answer-key entry: every format converges to { questionNumber, answer }. */
+export interface AnswerKeyEntry {
+  questionNumber: number;
+  answer:
+    | { kind: 'option'; index: number; label: string }
+    | { kind: 'boolean'; value: boolean };
+  raw: string;
+}
+
+/** Full validation report from the ONE canonical backend parser — drives the
+ *  mandatory pre-import preview (no rules live in the browser anymore). */
+export interface ParseReport {
+  entries: AnswerKeyEntry[];
+  totalDetected: number;
+  startsAtOne: boolean;
+  zeroOrNegative: number[];
+  missingNumbers: number[];
+  duplicates: number[];
+  conflicts: number[];
+  invalid: Array<{ questionNumber: number | null; raw: string; reason: string }>;
+  outOfRange: number[];
+  pagesUsed: number[];
+  pagesIgnored: Array<{ page: number; reason: string }>;
+}
+
+export interface PreviewAnswerKeyResult {
+  report: ParseReport;
+  /** How many parsed entries would map to a draft if applied. */
+  willMatch: number;
+  draftCount: number;
+}
+
 export interface ImportAnswerKeyResult {
   matched: number;
   keyEntries: number;
@@ -124,6 +156,8 @@ export interface ImportAnswerKeyResult {
   unmatchedDrafts: number;
   conflicts: number[];
   outOfRange: number[];
+  /** Same report the preview returned, so the post-import summary is exact. */
+  report: ParseReport;
 }
 
 /** Body for POST /ocr/jobs/:id/taxonomy — omit/empty `draftIds` → apply to ALL
@@ -258,6 +292,21 @@ export const ocrApi = {
   },
   importAnswerKey: async (jobId: string, body: ImportAnswerKeyBody): Promise<ImportAnswerKeyResult> => {
     const r = await apiClient.post<ApiEnvelope<ImportAnswerKeyResult>>(`/ocr/jobs/${jobId}/answer-key`, body);
+    return r.data.data;
+  },
+  /** Stateless parse+validate of raw key text (no job) — one canonical grammar,
+   *  used by the multi-file batch path to translate continuous numbering. */
+  parseAnswerKey: async (text: string): Promise<ParseReport> => {
+    const r = await apiClient.post<ApiEnvelope<ParseReport>>(`/ocr/answer-key/parse`, { text });
+    return r.data.data;
+  },
+  /** Dry-run: parse + validate + (PDF/image) OCR with page selection, returning
+   *  the canonical ParseReport WITHOUT applying. Drives preview-before-import. */
+  previewAnswerKey: async (jobId: string, body: ImportAnswerKeyBody): Promise<PreviewAnswerKeyResult> => {
+    const r = await apiClient.post<ApiEnvelope<PreviewAnswerKeyResult>>(
+      `/ocr/jobs/${jobId}/answer-key/preview`,
+      body,
+    );
     return r.data.data;
   },
   assignTaxonomy: async (jobId: string, body: AssignTaxonomyBody): Promise<AssignTaxonomyResult> => {

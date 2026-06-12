@@ -30,7 +30,7 @@ export const BreadcrumbStrip = () => {
         ))}
       </nav>
       <div className="flex items-center justify-between gap-4">
-        <h1 className="truncate text-xl font-semibold leading-none text-text">{title}</h1>
+        <h1 className="truncate text-xl font-semibold leading-tight text-text py-0.5">{title}</h1>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </div>
     </div>

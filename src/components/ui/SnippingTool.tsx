@@ -1,5 +1,6 @@
 import 'react-image-crop/dist/ReactCrop.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import ReactCrop, { type Crop } from 'react-image-crop';
 import {
   ChevronLeft,
@@ -305,8 +306,14 @@ export const SnippingTool = ({
 
   const hasSource = !!activeSource;
 
-  return (
-    <div className="modal-overlay" role="dialog" aria-modal="true">
+  // Render through a portal on document.body so the snipping overlay escapes any
+  // parent stacking context (transformed/filtered cards, sticky toolbars) and
+  // is layered above EVERYTHING — `z-[100]` beats the app's `z-50` ceiling
+  // (drawers, mega-menu, dropdown/select popovers). The full-viewport overlay
+  // then intercepts all clicks, so the page's taxonomy selects, navigators and
+  // bulk-action controls can neither show through nor be opened underneath it.
+  return createPortal(
+    <div className="modal-overlay z-[100]" role="dialog" aria-modal="true">
       <div
         className="modal max-w-5xl flex h-[88vh] flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -489,6 +496,7 @@ export const SnippingTool = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

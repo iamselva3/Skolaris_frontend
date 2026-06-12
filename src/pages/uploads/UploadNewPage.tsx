@@ -225,10 +225,10 @@ export const UploadNewPage = () => {
               ) : null}
 
               {/* What happens next */}
-              <p className="inline-flex items-center gap-1.5 text-[12px] text-text-muted">
+              {/* <p className="inline-flex items-center gap-1.5 text-[12px] text-text-muted">
                 <Sparkles size={13} className="text-primary" />
                 You'll tag the program/subject and review the extracted questions on the next screen.
-              </p>
+              </p> */}
 
               {/* Progress */}
               {progress !== null ? (

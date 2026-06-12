@@ -200,6 +200,20 @@ const SUPER_ADMIN_CARDS: DashboardModuleCard[] = [
     ],
   },
   {
+    id: 'notifications',
+    icon: <Bell size={56} className="text-primary" strokeWidth={1.5} aria-hidden />,
+    title: 'Notifications',
+    subtitle: 'Your alerts',
+    href: '/notifications',
+    metrics: (d) => [
+      (v(d, (x) => x.notifications.unread, 0) > 0 ? critical : positive)(
+        'unread',
+        v(d, (x) => x.notifications.unread, 0),
+      ),
+      neutral('today', v(d, (x) => x.notifications.totalToday, '—')),
+    ],
+  },
+  {
     id: 'system',
     icon: <FcSettings size={56} aria-hidden />,
     title: 'System',

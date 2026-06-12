@@ -6,6 +6,7 @@ export interface MyExamItem {
   examId: string;
   examTitle: string;
   durationSeconds: number;
+  totalMarks: number;
   opensAt: string | null;
   closesAt: string | null;
   status: AttemptStatus;

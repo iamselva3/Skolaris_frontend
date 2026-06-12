@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, Trash2, Calendar, Clock } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 import { examsApi, type ExamQuestion } from '@/lib/api/exams.api';
 import { questionsApi, type Question } from '@/lib/api/questions.api';
 import { questionPapersApi } from '@/lib/api/question-papers.api';
@@ -16,6 +16,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { CourseSelector } from '@/components/ui/CourseSelector';
+import { DateTimeField, type DateTimePreset } from '@/components/ui/DateTimeField';
 import type { TaxonomySelection } from '@/lib/api/taxonomy.api';
 import { DefinitionList } from '@/components/ui/DefinitionList';
 import { Drawer } from '@/components/ui/Drawer';
@@ -115,6 +116,7 @@ const StepCreate = ({
   disabled: boolean;
   onSaved: () => void;
 }) => {
+  const qc = useQueryClient();
   const exam = useQuery({ queryKey: ['exam', examId], queryFn: () => examsApi.get(examId) });
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -127,8 +129,13 @@ const StepCreate = ({
   const [showPicker, setShowPicker] = useState(false);
   const [showPaperImport, setShowPaperImport] = useState(false);
 
+  // Initialize the form from server data ONCE. Adding/removing questions refetches
+  // the exam (to refresh the questions list); without this guard the effect would
+  // re-run on every refetch and wipe the user's UNSAVED title / opens-at / closes-at.
+  const initialized = useRef(false);
   useEffect(() => {
-    if (!exam.data) return;
+    if (!exam.data || initialized.current) return;
+    initialized.current = true;
     setTitle(exam.data.title === 'Untitled exam' ? '' : exam.data.title);
     setDescription(exam.data.description ?? '');
     setDuration(String(Math.round(exam.data.durationSeconds / 60)));
@@ -138,6 +145,12 @@ const StepCreate = ({
     setOpensAt(exam.data.opensAt?.slice(0, 16) ?? '');
     setClosesAt(exam.data.closesAt?.slice(0, 16) ?? '');
   }, [exam.data]);
+
+  // Refresh ONLY the questions list after add/remove — never advances the step or
+  // resets the form (unlike the parent's onSaved, which is for "Save & Continue").
+  const refreshQuestions = (): void => {
+    void qc.invalidateQueries({ queryKey: ['exam', examId] });
+  };
 
   const save = useMutation({
     mutationFn: () =>
@@ -159,9 +172,37 @@ const StepCreate = ({
   });
   const removeQ = useMutation({
     mutationFn: (eqId: string) => examsApi.removeQuestion(examId, eqId),
-    onSuccess: onSaved,
+    onSuccess: refreshQuestions,
     onError: (err) => toast.error(apiErrorMessage(err)),
   });
+
+  // Quick-set presets for the date-time fields.
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const toLocal = (d: Date): string =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const nowLocal = (): string => {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    return toLocal(d);
+  };
+  const opensPresets: DateTimePreset[] = [
+    { label: 'Now', value: nowLocal },
+    {
+      label: 'Tomorrow 9:00 AM',
+      value: () => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        d.setHours(9, 0, 0, 0);
+        return toLocal(d);
+      },
+    },
+  ];
+  const closesBase = (): Date => (opensAt ? new Date(opensAt) : new Date());
+  const closesPresets: DateTimePreset[] = [
+    { label: '+1 hour', value: () => { const d = closesBase(); d.setHours(d.getHours() + 1); return toLocal(d); } },
+    { label: '+2 hours', value: () => { const d = closesBase(); d.setHours(d.getHours() + 2); return toLocal(d); } },
+    { label: '+1 day', value: () => { const d = closesBase(); d.setDate(d.getDate() + 1); return toLocal(d); } },
+  ];
 
   return (
     <>
@@ -195,30 +236,18 @@ const StepCreate = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 items-start gap-4">
-              <div>
-                <FormField label="Opens at" htmlFor="eo">
-                  <div className="relative">
-                    <Calendar size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-text-faint" />
-                    <Input id="eo" type="datetime-local" value={opensAt} onChange={(e) => setOpensAt(e.target.value)} disabled={disabled} className="pl-8" />
-                  </div>
-                </FormField>
-              </div>
-              <div>
-                <FormField label="Closes at" htmlFor="ec">
-                  <div className="relative">
-                    <Clock size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-text-faint" />
-                    <Input 
-                      id="ec" 
-                      type="datetime-local" 
-                      value={closesAt} 
-                      onChange={(e) => setClosesAt(e.target.value)} 
-                      disabled={disabled} 
-                      min={new Date().toISOString().slice(0, 16)} 
-                      className="pl-8" 
-                    />
-                  </div>
-                </FormField>
-              </div>
+              <FormField label="Opens at">
+                <DateTimeField value={opensAt} onChange={setOpensAt} disabled={disabled} presets={opensPresets} />
+              </FormField>
+              <FormField label="Closes at">
+                <DateTimeField
+                  value={closesAt}
+                  onChange={setClosesAt}
+                  disabled={disabled}
+                  min={opensAt || nowLocal()}
+                  presets={closesPresets}
+                />
+              </FormField>
             </div>
 
             <div className="flex flex-wrap items-center gap-5 pt-1">
@@ -287,7 +316,7 @@ const StepCreate = ({
         onClose={() => setShowPicker(false)}
         onAdded={() => {
           setShowPicker(false);
-          onSaved();
+          refreshQuestions();
         }}
       />
 

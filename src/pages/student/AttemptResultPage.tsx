@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Table } from '@/components/ui/Table';
+import { DonutChartFlat } from '@/components/reports/charts';
+import { scoreTone, toneColor } from '@/components/reports/charts/palette';
+import { formatSeconds } from '@/lib/utils/format';
 
 export const AttemptResultPage = () => {
   const { attemptId = '' } = useParams<{ attemptId: string }>();
@@ -37,17 +40,46 @@ export const AttemptResultPage = () => {
   const r = result.data;
   const pct = r.totalMarks === 0 ? 0 : Math.round((r.score / r.totalMarks) * 100);
 
+  const correct = r.perQuestion.filter((q) => q.isCorrect === true).length;
+  const incorrect = r.perQuestion.filter((q) => q.isCorrect === false).length;
+  const pending = r.perQuestion.filter((q) => q.isCorrect === null).length;
+  const graded = correct + incorrect;
+  const accuracy = graded > 0 ? Math.round((correct / graded) * 100) : null;
+  const totalTime = r.perQuestion.reduce((a, q) => a + q.timeSpentSeconds, 0);
+  const avgTime = r.perQuestion.length > 0 ? Math.round(totalTime / r.perQuestion.length) : 0;
+
+  const donut = [
+    { label: 'Correct', value: correct, tone: 'success' as const },
+    { label: 'Incorrect', value: incorrect, tone: 'danger' as const },
+    { label: 'Pending', value: pending, tone: 'muted' as const },
+  ].filter((s) => s.value > 0);
+
   return (
     <>
       <PageHeader title={r.examTitle} description={`Status: ${r.status}`} />
       <Card>
         <CardHeader>Your score</CardHeader>
         <CardBody>
-          <p className="text-xl font-semibold">
-            {r.score} <span className="text-text-muted">out of {r.totalMarks}</span>{' '}
-            <span className="ml-2 text-sm text-text-muted">({pct}%)</span>
-          </p>
-          {r.autoSubmitted ? <p className="mt-1 text-sm text-warning">Auto-submitted.</p> : null}
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-3xl font-semibold" style={{ color: toneColor(scoreTone(pct)) }}>
+                {pct}%
+              </p>
+              <p className="mt-1 text-sm text-text-muted">
+                {r.score} out of {r.totalMarks} marks
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-[13px] sm:grid-cols-4">
+                <ScoreStat label="Correct" value={correct} className="text-success" />
+                <ScoreStat label="Incorrect" value={incorrect} className="text-danger" />
+                {accuracy != null ? <ScoreStat label="Accuracy" value={`${accuracy}%`} /> : null}
+                <ScoreStat label="Avg / question" value={formatSeconds(avgTime)} />
+              </div>
+            </div>
+            {donut.length > 0 ? (
+              <DonutChartFlat data={donut} centerValue={`${pct}%`} centerLabel="score" />
+            ) : null}
+          </div>
+          {r.autoSubmitted ? <p className="mt-3 text-sm text-warning">Auto-submitted.</p> : null}
           {r.descriptivePending ? (
             <p className="mt-1 text-sm text-text-muted">
               Descriptive answers are pending teacher grading — your final score may update.
@@ -107,3 +139,20 @@ export const AttemptResultPage = () => {
     </>
   );
 };
+
+const ScoreStat = ({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string | number;
+  className?: string;
+}) => (
+  <div>
+    <div className="text-[11px] uppercase tracking-wide text-text-muted">{label}</div>
+    <div className={`font-mono text-sm font-semibold tabular-nums ${className ?? 'text-text'}`}>
+      {value}
+    </div>
+  </div>
+);

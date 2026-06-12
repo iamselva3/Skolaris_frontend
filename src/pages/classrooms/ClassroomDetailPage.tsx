@@ -178,7 +178,7 @@ export const ClassroomDetailPage = () => {
               </div>
               <h3 className="text-lg font-medium text-text">No exams published</h3>
               <p className="mt-1 max-w-sm text-sm text-text-muted">
-                Exams assigned to this classroom appear here once published. Exam management for classrooms will be available in the upcoming Phase 4 release.
+                Exams assigned to this classroom appear here once published.
               </p>
             </div>
           </CardBody>

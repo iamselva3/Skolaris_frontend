@@ -66,7 +66,14 @@ export const UploadsListPage = () => {
       ? (batches.data?.data ?? []).map((b) => ({ kind: 'batch', batch: b }))
       : [];
     const uploadRows: QueueRow[] = (list.data?.data ?? []).map((u) => ({ kind: 'upload', upload: u }));
-    return [...batchRows, ...uploadRows];
+    // Newest first across BOTH batches and single uploads — a single PDF uploaded
+    // after a batch sorts above it (normal reverse-chronological queue), instead
+    // of batches always pinned to the top.
+    const createdAt = (r: QueueRow): string =>
+      r.kind === 'batch' ? r.batch.createdAt : r.upload.createdAt;
+    return [...batchRows, ...uploadRows].sort(
+      (a, b) => new Date(createdAt(b)).getTime() - new Date(createdAt(a)).getTime(),
+    );
   }, [showBatches, batches.data, list.data]);
 
   // Batch rows derive a single rolled-up status from their member files.
@@ -121,7 +128,7 @@ export const UploadsListPage = () => {
         },
       },
       {
-        header: 'Age',
+        header: 'Uploaded',
         cell: (c) => {
           const created = c.row.original.kind === 'batch'
             ? c.row.original.batch.createdAt
